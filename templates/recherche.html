@@ -5,13 +5,15 @@
 {% block content %}
 <h2>Recherche client</h2>
 <p style="color: #666; margin-bottom: 1.5rem;">
-  Saisissez un nom ou un email pour retrouver un client et ses paiements.
+  Saisissez un nom ou un email pour retrouver un client et ses paiements.<br>
+  <small>Au moins {{ minimum }} caractères.</small>
 </p>
 
 <form method="get" style="margin-bottom: 2rem;">
   <div style="display: flex; gap: 0.8rem;">
     <input type="text" name="q" value="{{ terme }}" autofocus
-           placeholder="Nom du client ou adresse email"
+           minlength="{{ minimum }}"
+           placeholder="Nom du client ou adresse email ({{ minimum }} caractères minimum)"
            style="flex: 1; font-size: 1.05rem;">
     <button type="submit" style="white-space: nowrap;">Rechercher</button>
   </div>
@@ -19,7 +21,7 @@
 
 {% if trop_court %}
   <p style="color: #999; text-align: center; padding: 2rem;">
-    Saisissez au moins 2 caractères.
+    Saisissez au moins {{ minimum }} caractères pour lancer une recherche.
   </p>
 
 {% elif not terme %}

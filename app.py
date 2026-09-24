@@ -80,6 +80,11 @@ def deconnexion():
     return redirect(url_for('connexion'))
 
 
+# Nombre minimum de caractères exigé pour lancer une recherche.
+# Empêche un vendeur de balayer le fichier client avec une lettre ou deux.
+RECHERCHE_MIN = 5
+
+
 # ============ RECHERCHE (accessible aux vendeurs) ============
 @app.route('/recherche')
 @login_required
@@ -88,7 +93,7 @@ def recherche():
     terme = request.args.get('q', '').strip()
 
     resultats = []
-    if len(terme) >= 2:
+    if len(terme) >= RECHERCHE_MIN:
         resultats = database.obtenir_clients_summary(recherche=terme)[:50]
 
     details = {}
@@ -99,7 +104,8 @@ def recherche():
                            terme=terme,
                            resultats=resultats,
                            details=details,
-                           trop_court=(0 < len(terme) < 2))
+                           minimum=RECHERCHE_MIN,
+                           trop_court=(0 < len(terme) < RECHERCHE_MIN))
 
 # ============ DASHBOARD PRINCIPAL ============
 @app.route('/')
