@@ -1,64 +1,60 @@
 {% extends "base.html" %}
-
-{% block title %}{{ client_nom }} - Secureetech Facturation{% endblock %}
-
+{% block title %}{{ client_nom }} - SecureeTech{% endblock %}
 {% block content %}
-<div style="margin-bottom: 2rem;">
-    <a href="/clients" style="color: #3498db; text-decoration: none;">← Retour aux clients</a>
+<p style="margin-bottom:1rem;"><a href="{{ url_for('clients') }}">&larr; Tous les clients</a></p>
+
+<h2>{{ client_nom }}</h2>
+<p class="sous-titre">{{ email or 'Aucune adresse email connue' }}</p>
+
+<div class="stats">
+  <div class="stat"><div class="libelle">Total encaissé</div><div class="valeur">{{ "%.2f"|format(total) }} €</div></div>
+  <div class="stat"><div class="libelle">Paiements</div><div class="valeur">{{ nb_paiements }}</div></div>
+  <div class="stat"><div class="libelle">Contrats</div><div class="valeur">{{ contrats|length }}</div></div>
 </div>
 
-<div style="background: #f9f9f9; padding: 1.5rem; border-radius: 10px; margin-bottom: 2rem;">
-    <h2>{{ client_nom }}</h2>
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 1rem;">
-        <div>
-            <div style="color: #666; font-size: 0.9rem;">Total des paiements</div>
-            <div style="font-size: 2rem; font-weight: bold; color: #2ecc71;">€{{ "%.2f"|format(total) }}</div>
-        </div>
-        <div>
-            <div style="color: #666; font-size: 0.9rem;">Nombre de paiements</div>
-            <div style="font-size: 2rem; font-weight: bold;">{{ nb_paiements }}</div>
-        </div>
-        <div>
-            <div style="color: #666; font-size: 0.9rem;">Sources de paiement</div>
-            <div style="font-size: 1rem; margin-top: 0.5rem;">
-                {% for source in sources %}
-                    <span style="background: #e8f4f8; padding: 0.3rem 0.7rem; border-radius: 3px; margin-right: 0.3rem;">
-                        {{ source }}
-                    </span>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
+<div style="margin:1.25rem 0;">
+  <a class="bouton" href="{{ url_for('facture_client', client_nom=client_nom) }}">Éditer la facture récapitulative</a>
 </div>
 
-<h3>Historique des paiements</h3>
-<table style="width: 100%; border-collapse: collapse;">
-    <thead>
-        <tr style="background: #f0f0f0; border-bottom: 2px solid #ddd;">
-            <th style="padding: 1rem; text-align: left;">Date</th>
-            <th style="padding: 1rem; text-align: left;">Source</th>
-            <th style="padding: 1rem; text-align: right;">Montant</th>
-            <th style="padding: 1rem; text-align: left;">Référence</th>
-        </tr>
-    </thead>
+<h3>Contrats</h3>
+<div class="carte">
+  {% if contrats %}
+  <table>
+    <thead><tr><th>Document</th><th>Signataire</th><th>Statut</th><th>Signé le</th><th></th></tr></thead>
     <tbody>
-        {% for paiement in paiements %}
-        <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 1rem;">{{ paiement.date_paiement }}</td>
-            <td style="padding: 1rem;">
-                <span style="background: #e8f4f8; padding: 0.2rem 0.5rem; border-radius: 3px;">
-                    {{ paiement.source }}
-                </span>
-            </td>
-            <td style="padding: 1rem; text-align: right; font-weight: bold; color: #2ecc71;">
-                €{{ "%.2f"|format(paiement.montant) }}
-            </td>
-            <td style="padding: 1rem; font-size: 0.85rem; color: #999;">
-                {{ paiement.reference_externe or '-' }}
-            </td>
-        </tr>
-        {% endfor %}
+      {% for ct in contrats %}
+      <tr>
+        <td>{{ ct.titre or ct.objet or 'Contrat' }}</td>
+        <td class="discret">{{ ct.signataire_nom }}<br>{{ ct.signataire_email }}</td>
+        <td>
+          {% if ct.signe %}<span class="tag vert">signé</span>
+          {% else %}<span class="tag gris">{{ ct.statut }}</span>{% endif %}
+        </td>
+        <td class="discret">{{ ct.date_signature or ct.date_creation }}</td>
+        <td><a href="{{ url_for('contrat_pdf', request_id=ct.signature_request_id) }}">Télécharger</a></td>
+      </tr>
+      {% endfor %}
     </tbody>
-</table>
+  </table>
+  {% else %}
+  <div class="vide">Aucun contrat rattaché à ce client.</div>
+  {% endif %}
+</div>
 
+<h3>Paiements</h3>
+<div class="carte">
+  <table>
+    <thead><tr><th>Date</th><th>Plateforme</th><th class="num">Montant</th><th>Référence</th></tr></thead>
+    <tbody>
+      {% for p in paiements %}
+      <tr>
+        <td>{{ p.date_paiement }}</td>
+        <td><span class="tag">{{ p.source }}</span></td>
+        <td class="num">{{ "%.2f"|format(p.montant) }} €</td>
+        <td class="discret">{{ p.reference_externe or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

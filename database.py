@@ -335,3 +335,56 @@ def supprimer_facture(facture_id):
     cursor.execute('DELETE FROM factures WHERE id = ?', (facture_id,))
     conn.commit()
     conn.close()
+
+
+# ============ CONTRATS (Dropbox Sign) ============
+
+def init_contrats():
+    """Crée la table des contrats si absente."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS contrats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        signature_request_id TEXT UNIQUE,
+        titre TEXT,
+        objet TEXT,
+        signataire_email TEXT,
+        signataire_nom TEXT,
+        statut TEXT,
+        signe INTEGER,
+        date_creation TEXT,
+        date_signature TEXT
+    )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_contrats_email ON contrats(signataire_email)')
+    conn.commit()
+    conn.close()
+
+
+def obtenir_contrats_client(client_nom, email=''):
+    """Contrats d'un client, retrouvés par email puis par nom du signataire."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT * FROM contrats
+        WHERE (? <> '' AND LOWER(TRIM(signataire_email)) = LOWER(TRIM(?)))
+           OR LOWER(TRIM(signataire_nom)) = LOWER(TRIM(?))
+        ORDER BY date_signature DESC, date_creation DESC
+    ''', (email or '', email or '', client_nom or ''))
+    contrats = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return contrats
+
+
+def compter_contrats():
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('SELECT COUNT(*), SUM(signe) FROM contrats')
+        total, signes = cursor.fetchone()
+        return {'total': total or 0, 'signes': signes or 0}
+    except Exception:
+        return {'total': 0, 'signes': 0}
+    finally:
+        conn.close()

@@ -4,7 +4,8 @@ from datetime import datetime
 import os
 import config
 import database
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -19,6 +20,7 @@ app.secret_key = config.SECRET_KEY
 # démarrer, sinon la plateforme ne voit qu'un conteneur qui ne répond pas.
 try:
     database.init_db()
+    database.init_contrats()
     database.regenerate_clients_summary()
 except Exception as erreur_demarrage:  # pragma: no cover
     import traceback
@@ -125,13 +127,17 @@ def recherche():
         resultats = database.obtenir_clients_summary(recherche=terme)[:50]
 
     details = {}
+    contrats = {}
     for client in resultats:
-        details[client['client_nom']] = database.obtenir_paiements_client(client['client_nom'])
+        nom = client['client_nom']
+        details[nom] = database.obtenir_paiements_client(nom)
+        contrats[nom] = database.obtenir_contrats_client(nom, client.get('email') or '')
 
     return render_template('recherche.html',
                            terme=terme,
                            resultats=resultats,
                            details=details,
+                           contrats=contrats,
                            minimum=RECHERCHE_MIN,
                            trop_court=(0 < len(terme) < RECHERCHE_MIN))
 
@@ -156,14 +162,6 @@ def index():
         bloc['noms'].add((p['client_nom'] or '').lower())
 
     # Répartition par entité juridique
-    par_entite = {}
-    for p in paiements:
-        cle = p.get('entite') or 'à confirmer'
-        bloc = par_entite.setdefault(cle, {'entite': cle, 'nb': 0, 'total': 0.0})
-        bloc['nb'] += 1
-        bloc['total'] += p['montant'] or 0
-    par_entite = sorted(par_entite.values(), key=lambda b: b['total'], reverse=True)
-
     par_source = sorted(
         ({'source': b['source'], 'nb': b['nb'], 'total': b['total'],
           'clients': len(b['noms'])} for b in repartition.values()),
@@ -175,7 +173,7 @@ def index():
                          nb_clients=len(clients),
                          nb_paiements=len(paiements),
                          par_source=par_source,
-                         par_entite=par_entite,
+                         contrats=database.compter_contrats(),
                          clients_top=clients[:10])
 
 # ============ PAGE CLIENTS (AGRÉGÉ) ============
@@ -223,15 +221,19 @@ def clients():
 @admin_required
 def detail_client(client_nom):
     paiements = database.obtenir_paiements_client(client_nom)
-    
+
     total = sum(p['montant'] for p in paiements)
     sources = set(p['source'] for p in paiements)
-    
+    email = next((p['email'] for p in paiements if p.get('email')), '')
+    contrats = database.obtenir_contrats_client(client_nom, email)
+
     return render_template('client_detail.html',
                          client_nom=client_nom,
                          paiements=paiements,
                          total=total,
                          sources=sources,
+                         email=email,
+                         contrats=contrats,
                          nb_paiements=len(paiements))
 
 # ============ PAGE PAIEMENTS (FILTRAGE) ============
@@ -346,6 +348,101 @@ def api_facture_pdf(facture_id):
     buffer.seek(0)
     
     return buffer.getvalue(), 200, {'Content-Disposition': f'attachment; filename=facture_{facture_id}.pdf', 'Content-Type': 'application/pdf'}
+
+
+# ============ CONTRATS ET FACTURES ============
+@app.route('/contrat/<request_id>.pdf')
+@admin_required
+def contrat_pdf(request_id):
+    """Télécharge le contrat signé depuis Dropbox Sign."""
+    cle = os.environ.get('DROPBOX_SIGN_API_KEY', '')
+    if not cle:
+        return "Clé Dropbox Sign non configurée sur le serveur.", 503
+
+    import requests as _rq
+    reponse = _rq.get(
+        f'https://api.hellosign.com/v3/signature_request/files/{request_id}',
+        auth=(cle, ''), params={'file_type': 'pdf'}, timeout=30)
+
+    if reponse.status_code != 200:
+        return f"Contrat indisponible (code {reponse.status_code}).", 502
+
+    return reponse.content, 200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': f'attachment; filename=contrat_{request_id[:10]}.pdf',
+    }
+
+
+@app.route('/client/<client_nom>/facture.pdf')
+@admin_required
+def facture_client(client_nom):
+    """Facture récapitulative d'un client, générée depuis ses paiements."""
+    paiements = database.obtenir_paiements_client(client_nom)
+    if not paiements:
+        return "Aucun paiement pour ce client.", 404
+
+    email = next((p['email'] for p in paiements if p.get('email')), '')
+    total = sum(p['montant'] for p in paiements)
+
+    tampon = io.BytesIO()
+    doc = SimpleDocTemplate(tampon, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+    styles = getSampleStyleSheet()
+    bleu = colors.HexColor('#0967a0')
+
+    titre = ParagraphStyle('Titre', parent=styles['Heading1'], fontSize=20,
+                           textColor=bleu, spaceAfter=4)
+    normal = styles['Normal']
+
+    elements = [
+        Paragraph('SecureeTech', titre),
+        Paragraph('Récapitulatif des paiements', normal),
+        Spacer(1, 0.7*cm),
+        Paragraph(f'<b>Client :</b> {client_nom}', normal),
+    ]
+    if email:
+        elements.append(Paragraph(f'<b>Email :</b> {email}', normal))
+    elements += [
+        Paragraph(f"<b>Édité le :</b> {datetime.now().strftime('%d/%m/%Y')}", normal),
+        Spacer(1, 0.7*cm),
+    ]
+
+    lignes = [['Date', 'Plateforme', 'Référence', 'Montant']]
+    for p in sorted(paiements, key=lambda x: x['date_paiement']):
+        lignes.append([
+            p['date_paiement'],
+            p['source'],
+            (p['reference_externe'] or '')[:24],
+            f"{p['montant']:.2f} EUR",
+        ])
+    lignes.append(['', '', 'TOTAL', f'{total:.2f} EUR'])
+
+    tableau = Table(lignes, colWidths=[2.6*cm, 3*cm, 6.4*cm, 3.5*cm])
+    tableau.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), bleu),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#eef2f5')),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (3, 0), (3, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#dde5ea')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(tableau)
+
+    doc.build(elements)
+    tampon.seek(0)
+
+    nom_fichier = ''.join(ch if ch.isalnum() else '_' for ch in client_nom)[:40]
+    return tampon.getvalue(), 200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': f'attachment; filename=recapitulatif_{nom_fichier}.pdf',
+    }
+
 
 # ============ ERROR HANDLERS ============
 @app.errorhandler(404)

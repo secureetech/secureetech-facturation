@@ -1,101 +1,55 @@
 {% extends "base.html" %}
-
-{% block title %}Clients - Secureetech Facturation{% endblock %}
-
-{% macro tri(colonne, libelle) %}
-  {% set sens = 'ASC' if (sort_by == colonne and order == 'DESC') else 'DESC' %}
-  <a href="{{ url_for('clients', sort=colonne, order=sens, q=recherche,
-                      source=source, min_total=min_total,
-                      date_from=date_from, date_to=date_to) }}"
-     style="color: inherit; text-decoration: none;">
-    {{ libelle }}{% if sort_by == colonne %} {{ '▼' if order == 'DESC' else '▲' }}{% endif %}
-  </a>
+{% block title %}Clients - SecureeTech{% endblock %}
+{% macro tri(col, lib) %}
+  {% set sens = 'ASC' if (sort_by == col and order == 'DESC') else 'DESC' %}
+  <a href="{{ url_for('clients', sort=col, order=sens, q=recherche, source=source,
+                      min_total=min_total, date_from=date_from, date_to=date_to) }}">{{ lib }}{% if sort_by == col %} {{ '▾' if order == 'DESC' else '▴' }}{% endif %}</a>
 {% endmacro %}
-
 {% block content %}
 <h2>Clients</h2>
+<p class="sous-titre">{{ clients|length }} client{{ 's' if clients|length > 1 else '' }} &middot; {{ nb_paiements }} paiements &middot; {{ "%.2f"|format(total_affiche) }} €</p>
 
-<form method="get" style="background: #f7f7f9; padding: 1.2rem; border-radius: 8px; margin: 1.5rem 0;">
-  <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; gap: 0.8rem; align-items: end;">
-    <div>
-      <label style="font-size: 0.85rem; color: #555;">Nom ou email</label>
-      <input type="text" name="q" value="{{ recherche }}" placeholder="Rechercher un client">
-    </div>
-    <div>
-      <label style="font-size: 0.85rem; color: #555;">Plateforme</label>
-      <select name="source">
-        <option value="">Toutes</option>
-        {% for s in sources %}
-          <option value="{{ s }}" {% if source == s %}selected{% endif %}>{{ s }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <label style="font-size: 0.85rem; color: #555;">Total min. (€)</label>
-      <input type="number" name="min_total" value="{{ min_total }}" step="0.01" placeholder="0">
-    </div>
-    <div>
-      <label style="font-size: 0.85rem; color: #555;">Dernier paiement du</label>
-      <input type="date" name="date_from" value="{{ date_from }}">
-    </div>
-    <div>
-      <label style="font-size: 0.85rem; color: #555;">au</label>
-      <input type="date" name="date_to" value="{{ date_to }}">
-    </div>
-    <div style="display: flex; gap: 0.5rem;">
+<form method="get" class="filtres">
+  <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr auto; gap:.8rem; align-items:end;">
+    <div><label>Nom ou email</label><input type="text" name="q" value="{{ recherche }}" placeholder="Rechercher"></div>
+    <div><label>Plateforme</label>
+      <select name="source"><option value="">Toutes</option>
+        {% for s in sources %}<option value="{{ s }}" {% if source == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select></div>
+    <div><label>Total min. (€)</label><input type="number" name="min_total" value="{{ min_total }}" step="0.01"></div>
+    <div><label>Dernier paiement du</label><input type="date" name="date_from" value="{{ date_from }}"></div>
+    <div><label>au</label><input type="date" name="date_to" value="{{ date_to }}"></div>
+    <div style="display:flex; gap:.5rem;">
       <button type="submit">Filtrer</button>
-      <a href="{{ url_for('clients') }}"
-         style="padding: 0.75rem 1rem; color: #667eea; text-decoration: none; white-space: nowrap;">Réinitialiser</a>
+      <a class="bouton secondaire" href="{{ url_for('clients') }}">Effacer</a>
     </div>
   </div>
-  <input type="hidden" name="sort" value="{{ sort_by }}">
-  <input type="hidden" name="order" value="{{ order }}">
+  <input type="hidden" name="sort" value="{{ sort_by }}"><input type="hidden" name="order" value="{{ order }}">
 </form>
 
-<p style="color: #555; margin-bottom: 1rem;">
-  <strong>{{ clients|length }}</strong> client{{ 's' if clients|length > 1 else '' }}
-  &middot; <strong>{{ nb_paiements }}</strong> paiement{{ 's' if nb_paiements > 1 else '' }}
-  &middot; total <strong>{{ "%.2f"|format(total_affiche) }} €</strong>
-</p>
-
-<table>
-  <thead>
-    <tr style="background: #f0f0f0;">
-      <th>{{ tri('client_nom', 'Client') }}</th>
-      <th style="text-align: right;">{{ tri('total_paiements', 'Total') }}</th>
-      <th style="text-align: center;">{{ tri('nb_transactions', 'Paiements') }}</th>
+<div class="carte">
+  <table>
+    <thead><tr>
+      <th>{{ tri('client_nom','Client') }}</th>
+      <th class="num">{{ tri('total_paiements','Total') }}</th>
+      <th class="centre">{{ tri('nb_transactions','Paiements') }}</th>
       <th>Plateformes</th>
-      <th>{{ tri('dernier_paiement', 'Dernier paiement') }}</th>
+      <th>{{ tri('dernier_paiement','Dernier paiement') }}</th>
       <th></th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for client in clients %}
-    <tr>
-      <td>
-        <strong>{{ client.client_nom }}</strong>
-        {% if client.email %}
-          <br><small style="color: #777;">{{ client.email }}</small>
-        {% endif %}
-      </td>
-      <td style="text-align: right; font-weight: 600;">
-        {{ "%.2f"|format(client.total_paiements) }} €
-      </td>
-      <td style="text-align: center;">{{ client.nb_transactions }}</td>
-      <td>
-        {% for s in (client.sources or '').split(',') if s %}
-          <span style="background: #eef2ff; color: #4a4ae0; padding: 0.15rem 0.5rem;
-                       border-radius: 3px; font-size: 0.8rem; margin-right: 0.25rem;">{{ s }}</span>
-        {% endfor %}
-      </td>
-      <td>{{ client.dernier_paiement }}</td>
-      <td><a href="{{ url_for('detail_client', client_nom=client.client_nom) }}">Détails</a></td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-
-{% if not clients %}
-  <p style="text-align: center; padding: 2rem; color: #999;">Aucun client ne correspond à ces critères.</p>
-{% endif %}
+    </tr></thead>
+    <tbody>
+      {% for c in clients %}
+      <tr>
+        <td><strong>{{ c.client_nom }}</strong>{% if c.email %}<br><span class="discret">{{ c.email }}</span>{% endif %}</td>
+        <td class="num">{{ "%.2f"|format(c.total_paiements) }} €</td>
+        <td class="centre">{{ c.nb_transactions }}</td>
+        <td>{% for s in (c.sources or '').split(',') if s %}<span class="tag">{{ s }}</span>{% endfor %}</td>
+        <td class="discret">{{ c.dernier_paiement }}</td>
+        <td><a href="{{ url_for('detail_client', client_nom=c.client_nom) }}">Détails</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if not clients %}<div class="vide">Aucun client ne correspond à ces critères.</div>{% endif %}
+</div>
 {% endblock %}

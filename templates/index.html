@@ -1,100 +1,48 @@
 {% extends "base.html" %}
-
-{% block title %}Tableau de bord - Secureetech Facturation{% endblock %}
-
+{% block title %}Tableau de bord - SecureeTech{% endblock %}
 {% block content %}
 <h2>Tableau de bord</h2>
+<p class="sous-titre">Vue consolidée des encaissements, clients et contrats.</p>
 
-<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 1.5rem 0;">
-  <div style="background: #f7f7f9; padding: 1.2rem; border-radius: 8px;">
-    <div style="color: #666; font-size: 0.85rem;">Encaissé</div>
-    <div style="font-size: 1.6rem; font-weight: 700;">{{ "%.2f"|format(total_paiements) }} €</div>
-  </div>
-  <div style="background: #f7f7f9; padding: 1.2rem; border-radius: 8px;">
-    <div style="color: #666; font-size: 0.85rem;">Paiements</div>
-    <div style="font-size: 1.6rem; font-weight: 700;">{{ nb_paiements }}</div>
-  </div>
-  <div style="background: #f7f7f9; padding: 1.2rem; border-radius: 8px;">
-    <div style="color: #666; font-size: 0.85rem;">Clients</div>
-    <div style="font-size: 1.6rem; font-weight: 700;">{{ nb_clients }}</div>
-  </div>
-  <div style="background: #f7f7f9; padding: 1.2rem; border-radius: 8px;">
-    <div style="color: #666; font-size: 0.85rem;">Factures émises</div>
-    <div style="font-size: 1.6rem; font-weight: 700;">{{ "%.2f"|format(total_factures) }} €</div>
-  </div>
+<div class="stats">
+  <div class="stat"><div class="libelle">Encaissé</div><div class="valeur">{{ "%.2f"|format(total_paiements) }} €</div></div>
+  <div class="stat"><div class="libelle">Paiements</div><div class="valeur">{{ nb_paiements }}</div></div>
+  <div class="stat"><div class="libelle">Clients</div><div class="valeur">{{ nb_clients }}</div></div>
+  <div class="stat"><div class="libelle">Contrats signés</div><div class="valeur">{{ contrats.signes }}</div></div>
 </div>
 
-<h3 style="margin-top: 2rem;">Encaissé par société</h3>
-<table>
-  <thead>
-    <tr style="background: #f0f0f0;">
-      <th>Société</th>
-      <th style="text-align: center;">Paiements</th>
-      <th style="text-align: right;">Total</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for e in par_entite %}
-    <tr>
-      <td><strong>{{ e.entite }}</strong></td>
-      <td style="text-align: center;">{{ e.nb }}</td>
-      <td style="text-align: right; font-weight: 600;">{{ "%.2f"|format(e.total) }} €</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<h3>Encaissé par plateforme</h3>
+<div class="carte">
+  <table>
+    <thead><tr><th>Plateforme</th><th class="centre">Paiements</th><th class="centre">Clients</th><th class="num">Total</th></tr></thead>
+    <tbody>
+      {% for s in par_source %}
+      <tr>
+        <td><span class="tag">{{ s.source }}</span></td>
+        <td class="centre">{{ s.nb }}</td>
+        <td class="centre">{{ s.clients }}</td>
+        <td class="num">{{ "%.2f"|format(s.total) }} €</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 
-<h3 style="margin-top: 2rem;">Encaissé par plateforme</h3>
-<table>
-  <thead>
-    <tr style="background: #f0f0f0;">
-      <th>Plateforme</th>
-      <th style="text-align: center;">Paiements</th>
-      <th style="text-align: center;">Clients</th>
-      <th style="text-align: right;">Total</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for s in par_source %}
-    <tr>
-      <td><strong>{{ s.source }}</strong></td>
-      <td style="text-align: center;">{{ s.nb }}</td>
-      <td style="text-align: center;">{{ s.clients }}</td>
-      <td style="text-align: right; font-weight: 600;">{{ "%.2f"|format(s.total) }} €</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-
-<h3 style="margin-top: 2rem;">
-  Meilleurs clients
-  <a href="{{ url_for('clients') }}" style="font-size: 0.85rem; font-weight: normal; margin-left: 1rem;">Voir tous les clients</a>
-</h3>
-<table>
-  <thead>
-    <tr style="background: #f0f0f0;">
-      <th>Client</th>
-      <th style="text-align: right;">Total</th>
-      <th style="text-align: center;">Paiements</th>
-      <th>Plateformes</th>
-      <th>Dernier paiement</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for c in clients_top %}
-    <tr>
-      <td><a href="{{ url_for('detail_client', client_nom=c.client_nom) }}">{{ c.client_nom }}</a></td>
-      <td style="text-align: right; font-weight: 600;">{{ "%.2f"|format(c.total_paiements) }} €</td>
-      <td style="text-align: center;">{{ c.nb_transactions }}</td>
-      <td>
-        {% for s in (c.sources or '').split(',') if s %}
-          <span style="background: #eef2ff; color: #4a4ae0; padding: 0.15rem 0.5rem;
-                       border-radius: 3px; font-size: 0.8rem; margin-right: 0.25rem;">{{ s }}</span>
-        {% endfor %}
-      </td>
-      <td>{{ c.dernier_paiement }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<h3>Meilleurs clients <a href="{{ url_for('clients') }}" style="font-size:.85rem; font-weight:400; margin-left:.6rem;">Voir tous</a></h3>
+<div class="carte">
+  <table>
+    <thead><tr><th>Client</th><th class="num">Total</th><th class="centre">Paiements</th><th>Plateformes</th><th>Dernier paiement</th></tr></thead>
+    <tbody>
+      {% for c in clients_top %}
+      <tr>
+        <td><a href="{{ url_for('detail_client', client_nom=c.client_nom) }}">{{ c.client_nom }}</a></td>
+        <td class="num">{{ "%.2f"|format(c.total_paiements) }} €</td>
+        <td class="centre">{{ c.nb_transactions }}</td>
+        <td>{% for s in (c.sources or '').split(',') if s %}<span class="tag">{{ s }}</span>{% endfor %}</td>
+        <td class="discret">{{ c.dernier_paiement }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

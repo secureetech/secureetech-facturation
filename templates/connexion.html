@@ -1,91 +1,32 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connexion - Secureetech Facturation</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .login-box {
-            background: white;
-            padding: 3rem;
-            border-radius: 10px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-            width: 100%;
-            max-width: 400px;
-        }
-        .login-box h1 {
-            text-align: center;
-            color: #667eea;
-            margin-bottom: 2rem;
-            font-size: 2rem;
-        }
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #333;
-            font-weight: 600;
-        }
-        input {
-            width: 100%;
-            padding: 0.75rem;
-            border: 2px solid #ddd;
-            border-radius: 5px;
-            font-size: 1rem;
-            transition: border-color 0.3s;
-        }
-        input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        button {
-            width: 100%;
-            padding: 0.75rem;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        button:hover {
-            background: #764ba2;
-        }
-        .alert {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 1rem;
-            border-radius: 5px;
-            margin-bottom: 1rem;
-            border: 1px solid #f5c6cb;
-        }
-    </style>
-</head>
-<body>
-    <div class="login-box">
-        <h1>🔐 Accès Admin</h1>
-        {% if error %}
-        <div class="alert">{{ error }}</div>
-        {% endif %}
-        <form method="POST">
-            <div class="form-group">
-                <label for="password">Mot de passe:</label>
-                <input type="password" id="password" name="password" required autofocus>
-            </div>
-            <button type="submit">Se connecter</button>
-        </form>
+{% extends "base.html" %}
+{% block title %}Connexion - SecureeTech{% endblock %}
+{% block content %}
+<div style="max-width:400px; margin:6vh auto;">
+  <div class="carte">
+    <div style="background:var(--bleu-nuit); padding:1.8rem 1.6rem; color:#fff;">
+      <div class="marque" style="font-size:1.25rem;">
+        <span class="point"></span> SecureeTech
+      </div>
+      <div style="color:rgba(255,255,255,.65); font-size:.88rem; margin-top:.35rem;">
+        Espace clients et paiements
+      </div>
     </div>
-</body>
-</html>
+    <div class="carte-corps">
+      {% if error %}
+      <div style="background:rgba(204,24,24,.08); color:#cc1818; padding:.65rem .85rem;
+                  border-radius:7px; font-size:.88rem; margin-bottom:1rem;">
+        {{ error }}
+      </div>
+      {% endif %}
+      <form method="post">
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" name="password" autofocus autocomplete="current-password">
+        <button type="submit" style="width:100%; margin-top:1rem;">Se connecter</button>
+      </form>
+    </div>
+  </div>
+  <p style="text-align:center; color:var(--gris); font-size:.8rem; margin-top:1rem;">
+    Accès réservé — SecureeTech
+  </p>
+</div>
+{% endblock %}
