@@ -28,12 +28,23 @@ except Exception as erreur_demarrage:  # pragma: no cover
 
 @app.route('/health')
 def health():
-    """Sonde de diagnostic : répond même si la base est en défaut."""
+    """Sonde de diagnostic : répond même si la base est en défaut.
+
+    N'expose aucun mot de passe : seulement s'ils sont configurés.
+    """
+    infos = {
+        'acces_admin_configure': bool(config.ADMIN_ACCESS_PASSWORD),
+        'acces_commercial_configure': bool(config.SALES_ACCESS_PASSWORD),
+        'memes_mots_de_passe': bool(config.SALES_ACCESS_PASSWORD)
+                               and config.ADMIN_ACCESS_PASSWORD == config.SALES_ACCESS_PASSWORD,
+    }
     try:
-        n = len(database.obtenir_tous_paiements())
-        return {'statut': 'ok', 'paiements': n}, 200
+        infos['paiements'] = len(database.obtenir_tous_paiements())
+        infos['statut'] = 'ok'
     except Exception as e:
-        return {'statut': 'base en erreur', 'detail': str(e)}, 200
+        infos['statut'] = 'base en erreur'
+        infos['detail'] = str(e)
+    return infos, 200
 
 # ============ AUTHENTIFICATION ET RÔLES ============
 # Deux rôles :
