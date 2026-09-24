@@ -14,9 +14,26 @@ import io
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 
-# Initialiser la BD
-database.init_db()
-database.regenerate_clients_summary()
+# Préparation de la base au démarrage.
+# Encapsulé : un incident ici ne doit jamais empêcher le serveur de
+# démarrer, sinon la plateforme ne voit qu'un conteneur qui ne répond pas.
+try:
+    database.init_db()
+    database.regenerate_clients_summary()
+except Exception as erreur_demarrage:  # pragma: no cover
+    import traceback
+    print("ERREUR au démarrage lors de la préparation de la base :", erreur_demarrage, flush=True)
+    traceback.print_exc()
+
+
+@app.route('/health')
+def health():
+    """Sonde de diagnostic : répond même si la base est en défaut."""
+    try:
+        n = len(database.obtenir_tous_paiements())
+        return {'statut': 'ok', 'paiements': n}, 200
+    except Exception as e:
+        return {'statut': 'base en erreur', 'detail': str(e)}, 200
 
 # ============ AUTHENTIFICATION ET RÔLES ============
 # Deux rôles :
