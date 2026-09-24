@@ -6,16 +6,8 @@
 <h2>Paiements</h2>
 
 <form method="get" style="background: #f7f7f9; padding: 1.2rem; border-radius: 8px; margin: 1.5rem 0;">
-  <div style="display: grid; grid-template-columns: repeat(6, 1fr) auto; gap: 0.8rem; align-items: end;">
+  <div style="display: grid; grid-template-columns: repeat(5, 1fr) auto; gap: 0.8rem; align-items: end;">
     <div>
-      <label style="font-size: 0.85rem; color: #555;">Société</label>
-      <select name="entite">
-        <option value="">Toutes</option>
-        {% for e in entites %}
-          <option value="{{ e }}" {% if entite == e %}selected{% endif %}>{{ e }}</option>
-        {% endfor %}
-      </select>
-    </div>
     <div>
       <label style="font-size: 0.85rem; color: #555;">Plateforme</label>
       <select name="source">
@@ -60,7 +52,6 @@
     <tr style="background: #f0f0f0;">
       <th>Date</th>
       <th>Client</th>
-      <th>Société</th>
       <th>Plateforme</th>
       <th style="text-align: right;">Montant</th>
       <th>Référence</th>
@@ -71,7 +62,6 @@
     <tr>
       <td>{{ p.date_paiement }}</td>
       <td>{{ p.client_nom }}</td>
-      <td><small>{{ p.entite or 'à confirmer' }}</small></td>
       <td>
         <span style="background: #eef2ff; color: #4a4ae0; padding: 0.15rem 0.5rem;
                      border-radius: 3px; font-size: 0.8rem;">{{ p.source }}</span>
