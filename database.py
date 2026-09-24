@@ -24,10 +24,16 @@ def init_db():
         client_nom TEXT,
         email TEXT,
         reference_externe TEXT,
+        entite TEXT DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
-    
+
+    # Ajout de la colonne entite sur une base existante
+    colonnes = [c[1] for c in cursor.execute("PRAGMA table_info(paiements)")]
+    if 'entite' not in colonnes:
+        cursor.execute("ALTER TABLE paiements ADD COLUMN entite TEXT DEFAULT ''")
+
     # Table des factures
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS factures (
@@ -58,7 +64,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-def ajouter_paiement(date_paiement, source, montant, client_nom='', email='', reference_externe=''):
+def ajouter_paiement(date_paiement, source, montant, client_nom='', email='', reference_externe='', entite=''):
     """Ajouter un paiement à la BD"""
     conn = get_connection()
     cursor = conn.cursor()
@@ -68,9 +74,9 @@ def ajouter_paiement(date_paiement, source, montant, client_nom='', email='', re
     
     try:
         cursor.execute('''
-        INSERT INTO paiements (date_paiement, source, montant, client_nom, email, reference_externe)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ''', (date_paiement, source, montant, client_nom, email, reference_externe))
+        INSERT INTO paiements (date_paiement, source, montant, client_nom, email, reference_externe, entite)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (date_paiement, source, montant, client_nom, email, reference_externe, entite))
         
         conn.commit()
         return cursor.lastrowid
@@ -244,7 +250,7 @@ def obtenir_paiements_client(client_nom):
     conn.close()
     return paiements
 
-def filtrer_paiements(date_from=None, date_to=None, source=None, min_amount=None, max_amount=None):
+def filtrer_paiements(date_from=None, date_to=None, source=None, min_amount=None, max_amount=None, entite=None):
     """Filtrer les paiements par critères"""
     conn = get_connection()
     cursor = conn.cursor()
@@ -263,6 +269,10 @@ def filtrer_paiements(date_from=None, date_to=None, source=None, min_amount=None
     if source:
         query += ' AND source = ?'
         params.append(source)
+
+    if entite:
+        query += ' AND entite = ?'
+        params.append(entite)
     
     if min_amount:
         query += ' AND montant >= ?'

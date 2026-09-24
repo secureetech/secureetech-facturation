@@ -144,6 +144,15 @@ def index():
         bloc['total'] += p['montant'] or 0
         bloc['noms'].add((p['client_nom'] or '').lower())
 
+    # Répartition par entité juridique
+    par_entite = {}
+    for p in paiements:
+        cle = p.get('entite') or 'à confirmer'
+        bloc = par_entite.setdefault(cle, {'entite': cle, 'nb': 0, 'total': 0.0})
+        bloc['nb'] += 1
+        bloc['total'] += p['montant'] or 0
+    par_entite = sorted(par_entite.values(), key=lambda b: b['total'], reverse=True)
+
     par_source = sorted(
         ({'source': b['source'], 'nb': b['nb'], 'total': b['total'],
           'clients': len(b['noms'])} for b in repartition.values()),
@@ -155,6 +164,7 @@ def index():
                          nb_clients=len(clients),
                          nb_paiements=len(paiements),
                          par_source=par_source,
+                         par_entite=par_entite,
                          clients_top=clients[:10])
 
 # ============ PAGE CLIENTS (AGRÉGÉ) ============
@@ -221,6 +231,7 @@ def paiements():
     date_from = request.args.get('date_from', '')
     date_to = request.args.get('date_to', '')
     source = request.args.get('source', '')
+    entite = request.args.get('entite', '')
     min_amount = request.args.get('min_amount', '')
     max_amount = request.args.get('max_amount', '')
     
@@ -229,6 +240,7 @@ def paiements():
         date_from=date_from if date_from else None,
         date_to=date_to if date_to else None,
         source=source if source else None,
+        entite=entite if entite else None,
         min_amount=float(min_amount) if min_amount else None,
         max_amount=float(max_amount) if max_amount else None
     )
@@ -236,10 +248,13 @@ def paiements():
     # Sources disponibles
     all_paiements = database.obtenir_tous_paiements()
     sources_list = sorted(list(set(p['source'] for p in all_paiements)))
+    entites_list = sorted({(p.get('entite') or 'à confirmer') for p in all_paiements})
     
     return render_template('paiements.html',
                          paiements=paiements_filtres,
                          sources=sources_list,
+                         entites=entites_list,
+                         entite=entite,
                          date_from=date_from,
                          date_to=date_to,
                          source=source,

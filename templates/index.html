@@ -24,6 +24,26 @@
   </div>
 </div>
 
+<h3 style="margin-top: 2rem;">Encaissé par société</h3>
+<table>
+  <thead>
+    <tr style="background: #f0f0f0;">
+      <th>Société</th>
+      <th style="text-align: center;">Paiements</th>
+      <th style="text-align: right;">Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in par_entite %}
+    <tr>
+      <td><strong>{{ e.entite }}</strong></td>
+      <td style="text-align: center;">{{ e.nb }}</td>
+      <td style="text-align: right; font-weight: 600;">{{ "%.2f"|format(e.total) }} €</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
 <h3 style="margin-top: 2rem;">Encaissé par plateforme</h3>
 <table>
   <thead>

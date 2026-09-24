@@ -3,91 +3,87 @@
 {% block title %}Paiements - Secureetech Facturation{% endblock %}
 
 {% block content %}
-<h2>💳 Gestion des Paiements</h2>
+<h2>Paiements</h2>
 
-<div style="background: #f9f9f9; padding: 1.5rem; border-radius: 10px; margin: 1.5rem 0;">
-    <h3>Ajouter un paiement</h3>
-    <form id="form-paiement" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-        <input type="date" id="date_paiement" name="date_paiement" required>
-        <select id="source" name="source" required>
-            <option value="">-- Sélectionner une source --</option>
-            <option value="stripe">Stripe</option>
-            <option value="mollie">Mollie</option>
-            <option value="gocardless">GoCardless</option>
-            <option value="bridge">Bridge</option>
-            <option value="autre">Autre</option>
-        </select>
-        <input type="number" id="montant" name="montant" placeholder="Montant" step="0.01" required>
-        <input type="text" id="client_nom" name="client_nom" placeholder="Nom du client (optionnel)">
-        <input type="email" id="email" name="email" placeholder="Email (optionnel)">
-        <input type="text" id="reference_externe" name="reference_externe" placeholder="Référence externe (optionnel)">
-        <button type="submit" style="grid-column: 1 / -1;">Ajouter paiement</button>
-    </form>
-</div>
-
-<h3>Tous les paiements</h3>
-<table>
-    <thead>
-        <tr>
-            <th>Date</th>
-            <th>Source</th>
-            <th>Montant</th>
-            <th>Client</th>
-            <th>Référence</th>
-            <th>Statut</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody id="paiements-tbody">
-        {% for paiement in paiements %}
-        <tr data-id="{{ paiement.id }}">
-            <td>{{ paiement.date_paiement }}</td>
-            <td>{{ paiement.source }}</td>
-            <td>${{ "%.2f"|format(paiement.montant) }}</td>
-            <td>{{ paiement.client_nom or 'N/A' }}</td>
-            <td>{{ paiement.reference_externe or '-' }}</td>
-            <td>{{ paiement.statut }}</td>
-            <td>
-                <button onclick="supprimerPaiement({{ paiement.id }})" style="background: #dc3545; padding: 0.5rem 1rem; font-size: 0.9rem;">Supprimer</button>
-            </td>
-        </tr>
+<form method="get" style="background: #f7f7f9; padding: 1.2rem; border-radius: 8px; margin: 1.5rem 0;">
+  <div style="display: grid; grid-template-columns: repeat(6, 1fr) auto; gap: 0.8rem; align-items: end;">
+    <div>
+      <label style="font-size: 0.85rem; color: #555;">Société</label>
+      <select name="entite">
+        <option value="">Toutes</option>
+        {% for e in entites %}
+          <option value="{{ e }}" {% if entite == e %}selected{% endif %}>{{ e }}</option>
         {% endfor %}
-    </tbody>
+      </select>
+    </div>
+    <div>
+      <label style="font-size: 0.85rem; color: #555;">Plateforme</label>
+      <select name="source">
+        <option value="">Toutes</option>
+        {% for s in sources %}
+          <option value="{{ s }}" {% if source == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label style="font-size: 0.85rem; color: #555;">Du</label>
+      <input type="date" name="date_from" value="{{ date_from }}">
+    </div>
+    <div>
+      <label style="font-size: 0.85rem; color: #555;">Au</label>
+      <input type="date" name="date_to" value="{{ date_to }}">
+    </div>
+    <div>
+      <label style="font-size: 0.85rem; color: #555;">Montant min.</label>
+      <input type="number" name="min_amount" value="{{ min_amount }}" step="0.01">
+    </div>
+    <div>
+      <label style="font-size: 0.85rem; color: #555;">Montant max.</label>
+      <input type="number" name="max_amount" value="{{ max_amount }}" step="0.01">
+    </div>
+    <div style="display: flex; gap: 0.5rem;">
+      <button type="submit">Filtrer</button>
+      <a href="{{ url_for('paiements') }}"
+         style="padding: 0.75rem 0.8rem; color: #667eea; text-decoration: none; white-space: nowrap;">Tout</a>
+    </div>
+  </div>
+</form>
+
+{% set total = paiements | sum(attribute='montant') %}
+<p style="color: #555; margin-bottom: 1rem;">
+  <strong>{{ paiements|length }}</strong> paiement{{ 's' if paiements|length > 1 else '' }}
+  &middot; total <strong>{{ "%.2f"|format(total) }} €</strong>
+</p>
+
+<table>
+  <thead>
+    <tr style="background: #f0f0f0;">
+      <th>Date</th>
+      <th>Client</th>
+      <th>Société</th>
+      <th>Plateforme</th>
+      <th style="text-align: right;">Montant</th>
+      <th>Référence</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in paiements %}
+    <tr>
+      <td>{{ p.date_paiement }}</td>
+      <td>{{ p.client_nom }}</td>
+      <td><small>{{ p.entite or 'à confirmer' }}</small></td>
+      <td>
+        <span style="background: #eef2ff; color: #4a4ae0; padding: 0.15rem 0.5rem;
+                     border-radius: 3px; font-size: 0.8rem;">{{ p.source }}</span>
+      </td>
+      <td style="text-align: right; font-weight: 600;">{{ "%.2f"|format(p.montant) }} €</td>
+      <td><small style="color: #999;">{{ p.reference_externe or '-' }}</small></td>
+    </tr>
+    {% endfor %}
+  </tbody>
 </table>
 
-<script>
-document.getElementById('form-paiement').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const data = {
-        date_paiement: document.getElementById('date_paiement').value,
-        source: document.getElementById('source').value,
-        montant: parseFloat(document.getElementById('montant').value),
-        client_nom: document.getElementById('client_nom').value,
-        email: document.getElementById('email').value,
-        reference_externe: document.getElementById('reference_externe').value
-    };
-    
-    const response = await fetch('/api/paiements/ajouter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-    });
-    
-    if (response.ok) {
-        alert('Paiement ajouté!');
-        location.reload();
-    } else {
-        alert('Erreur lors de l\'ajout du paiement');
-    }
-});
-
-async function supprimerPaiement(id) {
-    if (confirm('Êtes-vous sûr?')) {
-        const response = await fetch(`/api/paiements/${id}/supprimer`, { method: 'DELETE' });
-        if (response.ok) {
-            location.reload();
-        }
-    }
-}
-</script>
+{% if not paiements %}
+  <p style="text-align: center; padding: 2rem; color: #999;">Aucun paiement ne correspond à ces critères.</p>
+{% endif %}
 {% endblock %}
