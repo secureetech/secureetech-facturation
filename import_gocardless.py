@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Import GoCardless payments from CSV export
+Only import PAID_OUT payments (successful payments only)
 """
 import csv
 from datetime import datetime
@@ -14,23 +15,31 @@ csv_file = '/mnt/user-data/uploads/payments_index-export-EX01M347NNQRB421MP346MF
 with open(csv_file, 'r', encoding='utf-8') as f:
     reader = csv.DictReader(f)
     count = 0
-    skipped = 0
+    skipped_failed = 0
+    skipped_chargebacked = 0
+    skipped_other = 0
     
     for row in reader:
         try:
+            status = row['status'].strip().lower()
+            
+            # ONLY import paid_out payments (successful)
+            if status != 'paid_out':
+                if status == 'failed':
+                    skipped_failed += 1
+                elif status == 'charged_back':
+                    skipped_chargebacked += 1
+                else:
+                    skipped_other += 1
+                continue
+            
             # Extract data from CSV
             date_str = row['created_at'].split(' ')[0]  # Get date part only
             amount = float(row['amount'])
             client_name = f"{row['customers.given_name']} {row['customers.family_name']}".strip()
             email = row['customers.email']
             description = row['description']
-            status = row['status']
-            reference = row.get('links.payout', '') or 'GoCardless-' + row['created_at'].replace('-', '').replace(' ', '').replace(':', '')
-            
-            # Skip failed/chargebacked payments or ones without payout
-            if status not in ['paid_out']:
-                skipped += 1
-                continue
+            reference = row.get('links.payout', '') or f"GC-{date_str.replace('-', '')}"
             
             # Add to database
             paiement_id = database.ajouter_paiement(
@@ -43,14 +52,19 @@ with open(csv_file, 'r', encoding='utf-8') as f:
             )
             
             count += 1
-            if count % 50 == 0:
-                print(f"✓ Imported {count} payments...")
+            if count % 20 == 0:
+                print(f"✓ Imported {count} SUCCESSFUL payments...")
         
         except Exception as e:
             print(f"Error importing row: {row.get('created_at', 'unknown')} - {e}")
-            skipped += 1
+            skipped_other += 1
             continue
 
-print(f"\n✅ Successfully imported {count} GoCardless payments!")
-print(f"⏭️  Skipped {skipped} non-paid-out transactions")
+print(f"\n{'='*60}")
+print(f"✅ Successfully imported {count} PAID_OUT payments!")
+print(f"{'='*60}")
+print(f"❌ Skipped {skipped_failed} FAILED payments")
+print(f"❌ Skipped {skipped_chargebacked} CHARGEBACKED payments")
+print(f"⏭️  Skipped {skipped_other} OTHER status payments")
+print(f"{'='*60}")
 print(f"Database location: ./facturation.db")
