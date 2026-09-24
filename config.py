@@ -6,9 +6,12 @@ load_dotenv()
 # Mot de passe d'accès admin (accès complet)
 ADMIN_ACCESS_PASSWORD = os.getenv('ADMIN_ACCESS_PASSWORD', 'changeme123')
 
-# Mot de passe d'accès commercial (recherche seule)
-# Si vide, aucun accès commercial n'est possible.
-SALES_ACCESS_PASSWORD = os.getenv('SALES_ACCESS_PASSWORD', '')
+# Mot de passe d'accès commercial (recherche seule).
+# Réutilise PAIEMENTS_ACCESS_PASSWORD, déjà défini sur Railway.
+# SALES_ACCESS_PASSWORD reste accepté comme repli.
+# Si les deux sont vides, aucun accès commercial n'est possible.
+SALES_ACCESS_PASSWORD = (os.getenv('PAIEMENTS_ACCESS_PASSWORD', '')
+                         or os.getenv('SALES_ACCESS_PASSWORD', ''))
 
 # Clés API
 STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', '')
