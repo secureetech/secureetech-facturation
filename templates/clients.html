@@ -2,68 +2,100 @@
 
 {% block title %}Clients - Secureetech Facturation{% endblock %}
 
-{% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-    <h2>👥 Tous les Clients</h2>
-    <div style="font-size: 0.9rem; color: #666;">
-        Tri: 
-        <a href="?sort=total&order=DESC" style="text-decoration: {% if sort_by == 'total' and order == 'DESC' %}underline{% endif %}">Total ↓</a>
-        <a href="?sort=total&order=ASC" style="text-decoration: {% if sort_by == 'total' and order == 'ASC' %}underline{% endif %}">Total ↑</a>
-        <a href="?sort=nb_transactions&order=DESC" style="text-decoration: {% if sort_by == 'nb_transactions' and order == 'DESC' %}underline{% endif %}">Transactions ↓</a>
-        <a href="?sort=dernier_paiement&order=DESC" style="text-decoration: {% if sort_by == 'dernier_paiement' and order == 'DESC' %}underline{% endif %}">Récent ↓</a>
-    </div>
-</div>
+{% macro tri(colonne, libelle) %}
+  {% set sens = 'ASC' if (sort_by == colonne and order == 'DESC') else 'DESC' %}
+  <a href="{{ url_for('clients', sort=colonne, order=sens, q=recherche,
+                      source=source, min_total=min_total,
+                      date_from=date_from, date_to=date_to) }}"
+     style="color: inherit; text-decoration: none;">
+    {{ libelle }}{% if sort_by == colonne %} {{ '▼' if order == 'DESC' else '▲' }}{% endif %}
+  </a>
+{% endmacro %}
 
-<table style="width: 100%; border-collapse: collapse;">
-    <thead>
-        <tr style="background: #f0f0f0; border-bottom: 2px solid #ddd;">
-            <th style="padding: 1rem; text-align: left; width: 35%;">Nom Client</th>
-            <th style="padding: 1rem; text-align: right; width: 20%;">Total</th>
-            <th style="padding: 1rem; text-align: center; width: 15%;">Transactions</th>
-            <th style="padding: 1rem; text-align: left; width: 15%;">Sources</th>
-            <th style="padding: 1rem; text-align: center; width: 15%;">Action</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for client in clients %}
-        <tr style="border-bottom: 1px solid #eee; padding: 1rem;">
-            <td style="padding: 1rem; word-break: break-word;">
-                <strong>{{ client.client_nom }}</strong>
-                {% if client.email %}
-                    <br><small style="color: #666;">{{ client.email }}</small>
-                {% endif %}
-            </td>
-            <td style="padding: 1rem; text-align: right; font-weight: bold; color: #2ecc71;">
-                €{{ "%.2f"|format(client.total_paiements) }}
-            </td>
-            <td style="padding: 1rem; text-align: center;">
-                {{ client.nb_transactions }}
-            </td>
-            <td style="padding: 1rem;">
-                <small>
-                {% if client.sources %}
-                    {% for source in client.sources.split(',') %}
-                        <span style="background: #e8f4f8; padding: 0.2rem 0.5rem; border-radius: 3px; margin-right: 0.3rem;">
-                            {{ source.strip() }}
-                        </span>
-                    {% endfor %}
-                {% endif %}
-                </small>
-            </td>
-            <td style="padding: 1rem; text-align: center;">
-                <a href="/client/{{ client.client_nom|urlencode }}" style="color: #3498db; text-decoration: none;">
-                    Détails
-                </a>
-            </td>
-        </tr>
+{% block content %}
+<h2>Clients</h2>
+
+<form method="get" style="background: #f7f7f9; padding: 1.2rem; border-radius: 8px; margin: 1.5rem 0;">
+  <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; gap: 0.8rem; align-items: end;">
+    <div>
+      <label style="font-size: 0.85rem; color: #555;">Nom ou email</label>
+      <input type="text" name="q" value="{{ recherche }}" placeholder="Rechercher un client">
+    </div>
+    <div>
+      <label style="font-size: 0.85rem; color: #555;">Plateforme</label>
+      <select name="source">
+        <option value="">Toutes</option>
+        {% for s in sources %}
+          <option value="{{ s }}" {% if source == s %}selected{% endif %}>{{ s }}</option>
         {% endfor %}
-    </tbody>
+      </select>
+    </div>
+    <div>
+      <label style="font-size: 0.85rem; color: #555;">Total min. (€)</label>
+      <input type="number" name="min_total" value="{{ min_total }}" step="0.01" placeholder="0">
+    </div>
+    <div>
+      <label style="font-size: 0.85rem; color: #555;">Dernier paiement du</label>
+      <input type="date" name="date_from" value="{{ date_from }}">
+    </div>
+    <div>
+      <label style="font-size: 0.85rem; color: #555;">au</label>
+      <input type="date" name="date_to" value="{{ date_to }}">
+    </div>
+    <div style="display: flex; gap: 0.5rem;">
+      <button type="submit">Filtrer</button>
+      <a href="{{ url_for('clients') }}"
+         style="padding: 0.75rem 1rem; color: #667eea; text-decoration: none; white-space: nowrap;">Réinitialiser</a>
+    </div>
+  </div>
+  <input type="hidden" name="sort" value="{{ sort_by }}">
+  <input type="hidden" name="order" value="{{ order }}">
+</form>
+
+<p style="color: #555; margin-bottom: 1rem;">
+  <strong>{{ clients|length }}</strong> client{{ 's' if clients|length > 1 else '' }}
+  &middot; <strong>{{ nb_paiements }}</strong> paiement{{ 's' if nb_paiements > 1 else '' }}
+  &middot; total <strong>{{ "%.2f"|format(total_affiche) }} €</strong>
+</p>
+
+<table>
+  <thead>
+    <tr style="background: #f0f0f0;">
+      <th>{{ tri('client_nom', 'Client') }}</th>
+      <th style="text-align: right;">{{ tri('total_paiements', 'Total') }}</th>
+      <th style="text-align: center;">{{ tri('nb_transactions', 'Paiements') }}</th>
+      <th>Plateformes</th>
+      <th>{{ tri('dernier_paiement', 'Dernier paiement') }}</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for client in clients %}
+    <tr>
+      <td>
+        <strong>{{ client.client_nom }}</strong>
+        {% if client.email %}
+          <br><small style="color: #777;">{{ client.email }}</small>
+        {% endif %}
+      </td>
+      <td style="text-align: right; font-weight: 600;">
+        {{ "%.2f"|format(client.total_paiements) }} €
+      </td>
+      <td style="text-align: center;">{{ client.nb_transactions }}</td>
+      <td>
+        {% for s in (client.sources or '').split(',') if s %}
+          <span style="background: #eef2ff; color: #4a4ae0; padding: 0.15rem 0.5rem;
+                       border-radius: 3px; font-size: 0.8rem; margin-right: 0.25rem;">{{ s }}</span>
+        {% endfor %}
+      </td>
+      <td>{{ client.dernier_paiement }}</td>
+      <td><a href="{{ url_for('detail_client', client_nom=client.client_nom) }}">Détails</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
 </table>
 
 {% if not clients %}
-<div style="text-align: center; padding: 2rem; color: #999;">
-    Aucun client trouvé
-</div>
+  <p style="text-align: center; padding: 2rem; color: #999;">Aucun client ne correspond à ces critères.</p>
 {% endif %}
-
 {% endblock %}

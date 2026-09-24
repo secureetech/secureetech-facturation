@@ -99,57 +99,133 @@ def supprimer_paiement(paiement_id):
 
 # ============ CLIENTS SUMMARY (NEW) ============
 
+def _nom_canonique(variantes):
+    """Choisit le libellé le mieux écrit parmi les variantes d'un même nom.
+
+    Priorité : casse mixte (Jean Dupont) > Minuscules > MAJUSCULES.
+    À qualité égale, la variante la plus fréquente l'emporte.
+    """
+    def score(item):
+        nom, freq = item
+        if nom.isupper():
+            qualite = 0
+        elif nom.islower():
+            qualite = 1
+        else:
+            qualite = 2
+        return (qualite, freq)
+
+    return max(variantes.items(), key=score)[0]
+
+
 def regenerate_clients_summary():
-    """Regénérer la vue clients avec agrégation"""
+    """Regénérer la vue clients avec agrégation (insensible à la casse).
+
+    Un même client payant via plusieurs plateformes, ou dont le nom est
+    saisi avec une casse différente selon la source, apparaît sur une
+    seule ligne avec le total cumulé.
+    """
     conn = get_connection()
     cursor = conn.cursor()
-    
-    # Vider la table
+
     cursor.execute('DELETE FROM clients_summary')
-    
-    # Agrégation par client
+
     cursor.execute('''
-    SELECT 
-        client_nom,
-        SUM(montant) as total,
-        COUNT(*) as nb_trans,
-        GROUP_CONCAT(DISTINCT source) as sources,
-        MAX(date_paiement) as last_payment,
-        MAX(email) as email
+    SELECT client_nom, montant, source, date_paiement, email
     FROM paiements
-    GROUP BY client_nom
-    ORDER BY total DESC
     ''')
-    
-    rows = cursor.fetchall()
-    
-    for row in rows:
+
+    agrege = {}
+    for nom, montant, source, date_paiement, email in cursor.fetchall():
+        nom = (nom or 'Inconnu').strip()
+        cle = nom.lower()
+
+        entree = agrege.setdefault(cle, {
+            'variantes': {},
+            'total': 0.0,
+            'nb': 0,
+            'sources': set(),
+            'dernier': '',
+            'email': '',
+        })
+
+        entree['variantes'][nom] = entree['variantes'].get(nom, 0) + 1
+        entree['total'] += montant or 0
+        entree['nb'] += 1
+        if source:
+            entree['sources'].add(source)
+        if date_paiement and date_paiement > entree['dernier']:
+            entree['dernier'] = date_paiement
+        if email and not entree['email']:
+            entree['email'] = email
+
+    for entree in agrege.values():
         cursor.execute('''
-        INSERT INTO clients_summary 
+        INSERT INTO clients_summary
         (client_nom, total_paiements, nb_transactions, sources, dernier_paiement, email)
         VALUES (?, ?, ?, ?, ?, ?)
-        ''', (row[0], row[1], row[2], row[3], row[4], row[5]))
-    
+        ''', (
+            _nom_canonique(entree['variantes']),
+            round(entree['total'], 2),
+            entree['nb'],
+            ','.join(sorted(entree['sources'])),
+            entree['dernier'],
+            entree['email'],
+        ))
+
     conn.commit()
     conn.close()
-    
-    return len(rows)
 
-def obtenir_clients_summary(sort_by='total', order='DESC', limit=None):
-    """Obtenir résumé agrégé par client"""
+    return len(agrege)
+
+def obtenir_clients_summary(sort_by='total_paiements', order='DESC', limit=None,
+                            recherche=None, source=None, min_total=None,
+                            date_from=None, date_to=None):
+    """Obtenir le résumé agrégé par client, avec recherche et filtres.
+
+    recherche  : texte cherché dans le nom ou l'email
+    source     : ne garder que les clients ayant payé via cette plateforme
+    min_total  : total cumulé minimum
+    date_from  : dernier paiement à partir de cette date
+    date_to    : dernier paiement jusqu'à cette date
+    """
     conn = get_connection()
     cursor = conn.cursor()
-    
-    # Valider sort_by
+
     allowed_sorts = ['total_paiements', 'nb_transactions', 'dernier_paiement', 'client_nom']
     sort_by = sort_by if sort_by in allowed_sorts else 'total_paiements'
-    order = 'DESC' if order.upper() == 'DESC' else 'ASC'
-    
-    query = f'SELECT * FROM clients_summary ORDER BY {sort_by} {order}'
+    order = 'DESC' if str(order).upper() == 'DESC' else 'ASC'
+
+    query = 'SELECT * FROM clients_summary WHERE 1=1'
+    params = []
+
+    if recherche:
+        query += ' AND (LOWER(client_nom) LIKE ? OR LOWER(IFNULL(email, "")) LIKE ?)'
+        motif = f'%{recherche.lower().strip()}%'
+        params += [motif, motif]
+
+    if source:
+        query += ' AND sources LIKE ?'
+        params.append(f'%{source}%')
+
+    if min_total:
+        query += ' AND total_paiements >= ?'
+        params.append(float(min_total))
+
+    if date_from:
+        query += ' AND dernier_paiement >= ?'
+        params.append(date_from)
+
+    if date_to:
+        query += ' AND dernier_paiement <= ?'
+        params.append(date_to)
+
+    query += f' ORDER BY {sort_by} {order}'
     if limit:
-        query += f' LIMIT {limit}'
-    
-    cursor.execute(query)
+        query += ' LIMIT ?'
+        params.append(int(limit))
+
+    cursor.execute(query, params)
     clients = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return clients
@@ -159,7 +235,9 @@ def obtenir_paiements_client(client_nom):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        'SELECT * FROM paiements WHERE client_nom = ? ORDER BY date_paiement DESC',
+        '''SELECT * FROM paiements
+           WHERE LOWER(TRIM(client_nom)) = LOWER(TRIM(?))
+           ORDER BY date_paiement DESC''',
         (client_nom,)
     )
     paiements = [dict(row) for row in cursor.fetchall()]

@@ -48,37 +48,74 @@ def deconnexion():
 @app.route('/')
 @login_required
 def index():
-    # Stats globales
     paiements = database.obtenir_tous_paiements()
     factures = database.obtenir_toutes_factures()
-    
+    clients = database.obtenir_clients_summary()
+
     total_paiements = sum(p['montant'] for p in paiements)
     total_factures = sum(f['montant'] for f in factures)
-    nb_clients = len(set(p['client_nom'] for p in paiements))
-    
-    # Top clients
-    clients = database.obtenir_clients_summary(limit=10)
-    
-    return render_template('index.html', 
+
+    # Répartition par plateforme
+    repartition = {}
+    for p in paiements:
+        bloc = repartition.setdefault(p['source'], {'source': p['source'], 'nb': 0,
+                                                    'total': 0.0, 'noms': set()})
+        bloc['nb'] += 1
+        bloc['total'] += p['montant'] or 0
+        bloc['noms'].add((p['client_nom'] or '').lower())
+
+    par_source = sorted(
+        ({'source': b['source'], 'nb': b['nb'], 'total': b['total'],
+          'clients': len(b['noms'])} for b in repartition.values()),
+        key=lambda b: b['total'], reverse=True)
+
+    return render_template('index.html',
                          total_paiements=total_paiements,
                          total_factures=total_factures,
-                         nb_clients=nb_clients,
+                         nb_clients=len(clients),
                          nb_paiements=len(paiements),
-                         clients_top=clients)
+                         par_source=par_source,
+                         clients_top=clients[:10])
 
 # ============ PAGE CLIENTS (AGRÉGÉ) ============
 @app.route('/clients')
 @login_required
 def clients():
-    sort_by = request.args.get('sort', 'total')
+    sort_by = request.args.get('sort', 'total_paiements')
     order = request.args.get('order', 'DESC')
-    
-    clients_list = database.obtenir_clients_summary(sort_by=sort_by, order=order)
-    
-    return render_template('clients.html', 
+    recherche = request.args.get('q', '').strip()
+    source = request.args.get('source', '').strip()
+    min_total = request.args.get('min_total', '').strip()
+    date_from = request.args.get('date_from', '').strip()
+    date_to = request.args.get('date_to', '').strip()
+
+    clients_list = database.obtenir_clients_summary(
+        sort_by=sort_by,
+        order=order,
+        recherche=recherche or None,
+        source=source or None,
+        min_total=min_total or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+    )
+
+    total_affiche = sum(c['total_paiements'] for c in clients_list)
+    nb_paiements = sum(c['nb_transactions'] for c in clients_list)
+
+    toutes_sources = sorted({p['source'] for p in database.obtenir_tous_paiements()})
+
+    return render_template('clients.html',
                          clients=clients_list,
                          sort_by=sort_by,
-                         order=order)
+                         order=order,
+                         recherche=recherche,
+                         source=source,
+                         min_total=min_total,
+                         date_from=date_from,
+                         date_to=date_to,
+                         sources=toutes_sources,
+                         total_affiche=total_affiche,
+                         nb_paiements=nb_paiements)
 
 # ============ DÉTAILS CLIENT ============
 @app.route('/client/<client_nom>')
