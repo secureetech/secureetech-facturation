@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Factures - Secureetech Facturation{% endblock %}
+
+{% block content %}
+<h2>📄 Gestion des Factures</h2>
+
+<div style="background: #f9f9f9; padding: 1.5rem; border-radius: 10px; margin: 1.5rem 0;">
+    <h3>Créer une facture</h3>
+    <form id="form-facture" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <input type="text" id="numero_facture" name="numero_facture" placeholder="Numéro de facture (auto-généré si vide)">
+        <input type="date" id="date_facture" name="date_facture" required>
+        <input type="text" id="client_nom" name="client_nom" placeholder="Nom du client" required>
+        <input type="email" id="email" name="email" placeholder="Email (optionnel)">
+        <input type="number" id="montant" name="montant" placeholder="Montant" step="0.01" required>
+        <textarea id="description" name="description" placeholder="Description (optionnel)" style="grid-column: 1 / -1;"></textarea>
+        <button type="submit" style="grid-column: 1 / -1;">Créer facture</button>
+    </form>
+</div>
+
+<h3>Toutes les factures</h3>
+<table>
+    <thead>
+        <tr>
+            <th>Numéro</th>
+            <th>Date</th>
+            <th>Client</th>
+            <th>Montant</th>
+            <th>Statut</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for facture in factures %}
+        <tr>
+            <td><strong>{{ facture.numero_facture }}</strong></td>
+            <td>{{ facture.date_facture }}</td>
+            <td>{{ facture.client_nom }}</td>
+            <td>${{ "%.2f"|format(facture.montant) }}</td>
+            <td>{{ facture.statut }}</td>
+            <td>
+                <a href="{{ url_for('api_facture_pdf', facture_id=facture.id) }}" style="padding: 0.5rem 1rem; background: #28a745; color: white; text-decoration: none; border-radius: 3px; font-size: 0.9rem;">📥 PDF</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<script>
+document.getElementById('form-facture').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = {
+        numero_facture: document.getElementById('numero_facture').value || '',
+        date_facture: document.getElementById('date_facture').value,
+        client_nom: document.getElementById('client_nom').value,
+        email: document.getElementById('email').value,
+        montant: parseFloat(document.getElementById('montant').value),
+        description: document.getElementById('description').value
+    };
+    
+    const response = await fetch('/api/factures/ajouter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    
+    if (response.ok) {
+        alert('Facture créée!');
+        location.reload();
+    } else {
+        alert('Erreur lors de la création de la facture');
+    }
+});
+</script>
+{% endblock %}

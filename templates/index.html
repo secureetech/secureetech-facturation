@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil - Secureetech Facturation{% endblock %}
+
+{% block content %}
+<h2>📈 Tableau de Bord</h2>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin: 2rem 0;">
+    <div style="background: #e7f3ff; padding: 1.5rem; border-radius: 10px; text-align: center;">
+        <h3>Paiements Totaux</h3>
+        <p style="font-size: 2rem; color: #667eea; font-weight: bold;">${{ "%.2f"|format(total_paiements) }}</p>
+    </div>
+    <div style="background: #f0f8ff; padding: 1.5rem; border-radius: 10px; text-align: center;">
+        <h3>Factures Totales</h3>
+        <p style="font-size: 2rem; color: #764ba2; font-weight: bold;">${{ "%.2f"|format(total_factures) }}</p>
+    </div>
+</div>
+
+<hr style="margin: 2rem 0;">
+
+<h3>Paiements Récents</h3>
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Source</th>
+            <th>Montant</th>
+            <th>Client</th>
+            <th>Statut</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for paiement in paiements[:10] %}
+        <tr>
+            <td>{{ paiement.date_paiement }}</td>
+            <td>{{ paiement.source }}</td>
+            <td>${{ "%.2f"|format(paiement.montant) }}</td>
+            <td>{{ paiement.client_nom or 'N/A' }}</td>
+            <td>
+                <span style="background: {% if paiement.statut == 'completed' %}#d4edda{% else %}#fff3cd{% endif %}; padding: 0.25rem 0.75rem; border-radius: 3px;">
+                    {{ paiement.statut }}
+                </span>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<a href="{{ url_for('paiements') }}" style="display: inline-block; margin-top: 1rem; padding: 0.75rem 1.5rem; background: #667eea; color: white; text-decoration: none; border-radius: 5px;">Voir tous les paiements →</a>
+{% endblock %}

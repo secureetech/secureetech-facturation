@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Paiements - Secureetech Facturation{% endblock %}
+
+{% block content %}
+<h2>💳 Gestion des Paiements</h2>
+
+<div style="background: #f9f9f9; padding: 1.5rem; border-radius: 10px; margin: 1.5rem 0;">
+    <h3>Ajouter un paiement</h3>
+    <form id="form-paiement" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <input type="date" id="date_paiement" name="date_paiement" required>
+        <select id="source" name="source" required>
+            <option value="">-- Sélectionner une source --</option>
+            <option value="stripe">Stripe</option>
+            <option value="mollie">Mollie</option>
+            <option value="gocardless">GoCardless</option>
+            <option value="bridge">Bridge</option>
+            <option value="autre">Autre</option>
+        </select>
+        <input type="number" id="montant" name="montant" placeholder="Montant" step="0.01" required>
+        <input type="text" id="client_nom" name="client_nom" placeholder="Nom du client (optionnel)">
+        <input type="email" id="email" name="email" placeholder="Email (optionnel)">
+        <input type="text" id="reference_externe" name="reference_externe" placeholder="Référence externe (optionnel)">
+        <button type="submit" style="grid-column: 1 / -1;">Ajouter paiement</button>
+    </form>
+</div>
+
+<h3>Tous les paiements</h3>
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Source</th>
+            <th>Montant</th>
+            <th>Client</th>
+            <th>Référence</th>
+            <th>Statut</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody id="paiements-tbody">
+        {% for paiement in paiements %}
+        <tr data-id="{{ paiement.id }}">
+            <td>{{ paiement.date_paiement }}</td>
+            <td>{{ paiement.source }}</td>
+            <td>${{ "%.2f"|format(paiement.montant) }}</td>
+            <td>{{ paiement.client_nom or 'N/A' }}</td>
+            <td>{{ paiement.reference_externe or '-' }}</td>
+            <td>{{ paiement.statut }}</td>
+            <td>
+                <button onclick="supprimerPaiement({{ paiement.id }})" style="background: #dc3545; padding: 0.5rem 1rem; font-size: 0.9rem;">Supprimer</button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<script>
+document.getElementById('form-paiement').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = {
+        date_paiement: document.getElementById('date_paiement').value,
+        source: document.getElementById('source').value,
+        montant: parseFloat(document.getElementById('montant').value),
+        client_nom: document.getElementById('client_nom').value,
+        email: document.getElementById('email').value,
+        reference_externe: document.getElementById('reference_externe').value
+    };
+    
+    const response = await fetch('/api/paiements/ajouter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    
+    if (response.ok) {
+        alert('Paiement ajouté!');
+        location.reload();
+    } else {
+        alert('Erreur lors de l\'ajout du paiement');
+    }
+});
+
+async function supprimerPaiement(id) {
+    if (confirm('Êtes-vous sûr?')) {
+        const response = await fetch(`/api/paiements/${id}/supprimer`, { method: 'DELETE' });
+        if (response.ok) {
+            location.reload();
+        }
+    }
+}
+</script>
+{% endblock %}
