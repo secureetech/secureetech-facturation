@@ -16,6 +16,7 @@ app.secret_key = config.SECRET_KEY
 
 # Initialiser la BD
 database.init_db()
+database.regenerate_clients_summary()
 
 # Décorateur pour vérifier l'authentification
 def login_required(f):
@@ -43,31 +44,92 @@ def deconnexion():
     session.clear()
     return redirect(url_for('connexion'))
 
-# ============ ROUTES PRINCIPALES ============
+# ============ DASHBOARD PRINCIPAL ============
 @app.route('/')
+@login_required
 def index():
-    if 'authenticated' not in session:
-        return redirect(url_for('connexion'))
-    
+    # Stats globales
     paiements = database.obtenir_tous_paiements()
     factures = database.obtenir_toutes_factures()
     
-    total_paiements = sum(p['montant'] for p in paiements if p['statut'] != 'deleted')
+    total_paiements = sum(p['montant'] for p in paiements)
     total_factures = sum(f['montant'] for f in factures)
+    nb_clients = len(set(p['client_nom'] for p in paiements))
+    
+    # Top clients
+    clients = database.obtenir_clients_summary(limit=10)
     
     return render_template('index.html', 
-                         paiements=paiements, 
-                         factures=factures,
                          total_paiements=total_paiements,
-                         total_factures=total_factures)
+                         total_factures=total_factures,
+                         nb_clients=nb_clients,
+                         nb_paiements=len(paiements),
+                         clients_top=clients)
 
+# ============ PAGE CLIENTS (AGRÉGÉ) ============
+@app.route('/clients')
+@login_required
+def clients():
+    sort_by = request.args.get('sort', 'total')
+    order = request.args.get('order', 'DESC')
+    
+    clients_list = database.obtenir_clients_summary(sort_by=sort_by, order=order)
+    
+    return render_template('clients.html', 
+                         clients=clients_list,
+                         sort_by=sort_by,
+                         order=order)
+
+# ============ DÉTAILS CLIENT ============
+@app.route('/client/<client_nom>')
+@login_required
+def detail_client(client_nom):
+    paiements = database.obtenir_paiements_client(client_nom)
+    
+    total = sum(p['montant'] for p in paiements)
+    sources = set(p['source'] for p in paiements)
+    
+    return render_template('client_detail.html',
+                         client_nom=client_nom,
+                         paiements=paiements,
+                         total=total,
+                         sources=sources,
+                         nb_paiements=len(paiements))
+
+# ============ PAGE PAIEMENTS (FILTRAGE) ============
 @app.route('/paiements')
 @login_required
 def paiements():
-    paiements = database.obtenir_tous_paiements()
-    sources = list(set(p['source'] for p in paiements))
-    return render_template('paiements.html', paiements=paiements, sources=sources)
+    # Récupérer les filtres
+    date_from = request.args.get('date_from', '')
+    date_to = request.args.get('date_to', '')
+    source = request.args.get('source', '')
+    min_amount = request.args.get('min_amount', '')
+    max_amount = request.args.get('max_amount', '')
+    
+    # Appliquer filtres
+    paiements_filtres = database.filtrer_paiements(
+        date_from=date_from if date_from else None,
+        date_to=date_to if date_to else None,
+        source=source if source else None,
+        min_amount=float(min_amount) if min_amount else None,
+        max_amount=float(max_amount) if max_amount else None
+    )
+    
+    # Sources disponibles
+    all_paiements = database.obtenir_tous_paiements()
+    sources_list = sorted(list(set(p['source'] for p in all_paiements)))
+    
+    return render_template('paiements.html',
+                         paiements=paiements_filtres,
+                         sources=sources_list,
+                         date_from=date_from,
+                         date_to=date_to,
+                         source=source,
+                         min_amount=min_amount,
+                         max_amount=max_amount)
 
+# ============ PAGE FACTURES ============
 @app.route('/factures')
 @login_required
 def factures():
@@ -75,32 +137,6 @@ def factures():
     return render_template('factures.html', factures=factures)
 
 # ============ API ENDPOINTS ============
-@app.route('/api/paiements/ajouter', methods=['POST'])
-@login_required
-def api_ajouter_paiement():
-    data = request.json
-    try:
-        paiement_id = database.ajouter_paiement(
-            date_paiement=data.get('date_paiement'),
-            source=data.get('source'),
-            montant=float(data.get('montant')),
-            client_nom=data.get('client_nom', ''),
-            email=data.get('email', ''),
-            reference_externe=data.get('reference_externe', '')
-        )
-        return jsonify({'success': True, 'id': paiement_id})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
-
-@app.route('/api/paiements/<int:paiement_id>/supprimer', methods=['DELETE'])
-@login_required
-def api_supprimer_paiement(paiement_id):
-    try:
-        database.supprimer_paiement(paiement_id)
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
-
 @app.route('/api/factures/ajouter', methods=['POST'])
 @login_required
 def api_ajouter_facture():
@@ -147,7 +183,7 @@ def api_facture_pdf(facture_id):
         ['Client:', facture['client_nom']],
         ['Date:', facture['date_facture']],
         ['Email:', facture['email'] or 'N/A'],
-        ['Montant:', f"${facture['montant']:.2f}"],
+        ['Montant:', f"€{facture['montant']:.2f}"],
         ['Description:', facture['description'] or 'N/A']
     ]
     

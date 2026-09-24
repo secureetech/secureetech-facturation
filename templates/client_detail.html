@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}{{ client_nom }} - Secureetech Facturation{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 2rem;">
+    <a href="/clients" style="color: #3498db; text-decoration: none;">← Retour aux clients</a>
+</div>
+
+<div style="background: #f9f9f9; padding: 1.5rem; border-radius: 10px; margin-bottom: 2rem;">
+    <h2>{{ client_nom }}</h2>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+        <div>
+            <div style="color: #666; font-size: 0.9rem;">Total des paiements</div>
+            <div style="font-size: 2rem; font-weight: bold; color: #2ecc71;">€{{ "%.2f"|format(total) }}</div>
+        </div>
+        <div>
+            <div style="color: #666; font-size: 0.9rem;">Nombre de paiements</div>
+            <div style="font-size: 2rem; font-weight: bold;">{{ nb_paiements }}</div>
+        </div>
+        <div>
+            <div style="color: #666; font-size: 0.9rem;">Sources de paiement</div>
+            <div style="font-size: 1rem; margin-top: 0.5rem;">
+                {% for source in sources %}
+                    <span style="background: #e8f4f8; padding: 0.3rem 0.7rem; border-radius: 3px; margin-right: 0.3rem;">
+                        {{ source }}
+                    </span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<h3>Historique des paiements</h3>
+<table style="width: 100%; border-collapse: collapse;">
+    <thead>
+        <tr style="background: #f0f0f0; border-bottom: 2px solid #ddd;">
+            <th style="padding: 1rem; text-align: left;">Date</th>
+            <th style="padding: 1rem; text-align: left;">Source</th>
+            <th style="padding: 1rem; text-align: right;">Montant</th>
+            <th style="padding: 1rem; text-align: left;">Référence</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for paiement in paiements %}
+        <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 1rem;">{{ paiement.date_paiement }}</td>
+            <td style="padding: 1rem;">
+                <span style="background: #e8f4f8; padding: 0.2rem 0.5rem; border-radius: 3px;">
+                    {{ paiement.source }}
+                </span>
+            </td>
+            <td style="padding: 1rem; text-align: right; font-weight: bold; color: #2ecc71;">
+                €{{ "%.2f"|format(paiement.montant) }}
+            </td>
+            <td style="padding: 1rem; font-size: 0.85rem; color: #999;">
+                {{ paiement.reference_externe or '-' }}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}
