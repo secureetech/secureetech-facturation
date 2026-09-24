@@ -3,8 +3,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Mot de passe d'accès admin
+# Mot de passe d'accès admin (accès complet)
 ADMIN_ACCESS_PASSWORD = os.getenv('ADMIN_ACCESS_PASSWORD', 'changeme123')
+
+# Mot de passe d'accès commercial (recherche seule)
+# Si vide, aucun accès commercial n'est possible.
+SALES_ACCESS_PASSWORD = os.getenv('SALES_ACCESS_PASSWORD', '')
 
 # Clés API
 STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', '')

@@ -85,11 +85,16 @@
     <div class="navbar">
         <h1>📊 Secureetech Facturation</h1>
         <div>
-            <a href="{{ url_for('index') }}">Accueil</a>
-            <a href="{{ url_for('clients') }}">Clients</a>
-            <a href="{{ url_for('paiements') }}">Paiements</a>
-            <a href="{{ url_for('factures') }}">Factures</a>
-            <a href="{{ url_for('deconnexion') }}">Déconnexion</a>
+            {% if est_admin %}
+              <a href="{{ url_for('index') }}">Accueil</a>
+              <a href="{{ url_for('clients') }}">Clients</a>
+              <a href="{{ url_for('paiements') }}">Paiements</a>
+              <a href="{{ url_for('factures') }}">Factures</a>
+              <a href="{{ url_for('recherche') }}">Recherche</a>
+            {% elif role %}
+              <a href="{{ url_for('recherche') }}">Recherche</a>
+            {% endif %}
+            {% if role %}<a href="{{ url_for('deconnexion') }}">Déconnexion</a>{% endif %}
         </div>
     </div>
     {% endif %}

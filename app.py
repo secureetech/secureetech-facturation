@@ -18,35 +18,92 @@ app.secret_key = config.SECRET_KEY
 database.init_db()
 database.regenerate_clients_summary()
 
-# Décorateur pour vérifier l'authentification
+# ============ AUTHENTIFICATION ET RÔLES ============
+# Deux rôles :
+#   'admin'  -> Karim, accès complet (tableau de bord, listes, factures)
+#   'sales'  -> vendeurs, accès à la recherche uniquement
+
 def login_required(f):
+    """Exige une session ouverte, quel que soit le rôle."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'authenticated' not in session:
+        if not session.get('role'):
             return redirect(url_for('connexion'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+def admin_required(f):
+    """Réserve la page à l'administrateur."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        role = session.get('role')
+        if not role:
+            return redirect(url_for('connexion'))
+        if role != 'admin':
+            # Un vendeur est renvoyé vers son seul outil : la recherche
+            return redirect(url_for('recherche'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@app.context_processor
+def injecter_role():
+    """Rend le rôle disponible dans tous les gabarits (menu adapté)."""
+    return {'role': session.get('role'), 'est_admin': session.get('role') == 'admin'}
+
 
 # ============ ROUTES DE CONNEXION ============
 @app.route('/connexion', methods=['GET', 'POST'])
 def connexion():
     if request.method == 'POST':
         password = request.form.get('password', '')
-        if password == config.ADMIN_ACCESS_PASSWORD:
-            session['authenticated'] = True
+
+        if password and password == config.ADMIN_ACCESS_PASSWORD:
+            session.clear()
+            session['role'] = 'admin'
             return redirect(url_for('index'))
-        else:
-            return render_template('connexion.html', error='Mot de passe incorrect')
+
+        if password and config.SALES_ACCESS_PASSWORD and password == config.SALES_ACCESS_PASSWORD:
+            session.clear()
+            session['role'] = 'sales'
+            return redirect(url_for('recherche'))
+
+        return render_template('connexion.html', error='Mot de passe incorrect')
+
     return render_template('connexion.html')
+
 
 @app.route('/deconnexion')
 def deconnexion():
     session.clear()
     return redirect(url_for('connexion'))
 
+
+# ============ RECHERCHE (accessible aux vendeurs) ============
+@app.route('/recherche')
+@login_required
+def recherche():
+    """Recherche client. Rien ne s'affiche tant qu'aucun terme n'est saisi."""
+    terme = request.args.get('q', '').strip()
+
+    resultats = []
+    if len(terme) >= 2:
+        resultats = database.obtenir_clients_summary(recherche=terme)[:50]
+
+    details = {}
+    for client in resultats:
+        details[client['client_nom']] = database.obtenir_paiements_client(client['client_nom'])
+
+    return render_template('recherche.html',
+                           terme=terme,
+                           resultats=resultats,
+                           details=details,
+                           trop_court=(0 < len(terme) < 2))
+
 # ============ DASHBOARD PRINCIPAL ============
 @app.route('/')
-@login_required
+@admin_required
 def index():
     paiements = database.obtenir_tous_paiements()
     factures = database.obtenir_toutes_factures()
@@ -79,7 +136,7 @@ def index():
 
 # ============ PAGE CLIENTS (AGRÉGÉ) ============
 @app.route('/clients')
-@login_required
+@admin_required
 def clients():
     sort_by = request.args.get('sort', 'total_paiements')
     order = request.args.get('order', 'DESC')
@@ -119,7 +176,7 @@ def clients():
 
 # ============ DÉTAILS CLIENT ============
 @app.route('/client/<client_nom>')
-@login_required
+@admin_required
 def detail_client(client_nom):
     paiements = database.obtenir_paiements_client(client_nom)
     
@@ -135,7 +192,7 @@ def detail_client(client_nom):
 
 # ============ PAGE PAIEMENTS (FILTRAGE) ============
 @app.route('/paiements')
-@login_required
+@admin_required
 def paiements():
     # Récupérer les filtres
     date_from = request.args.get('date_from', '')
@@ -168,14 +225,14 @@ def paiements():
 
 # ============ PAGE FACTURES ============
 @app.route('/factures')
-@login_required
+@admin_required
 def factures():
     factures = database.obtenir_toutes_factures()
     return render_template('factures.html', factures=factures)
 
 # ============ API ENDPOINTS ============
 @app.route('/api/factures/ajouter', methods=['POST'])
-@login_required
+@admin_required
 def api_ajouter_facture():
     data = request.json
     try:
@@ -193,7 +250,7 @@ def api_ajouter_facture():
         return jsonify({'success': False, 'error': str(e)}), 400
 
 @app.route('/api/factures/<int:facture_id>/pdf')
-@login_required
+@admin_required
 def api_facture_pdf(facture_id):
     facture = database.obtenir_facture(facture_id)
     if not facture:
