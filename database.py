@@ -302,6 +302,9 @@ def init_factures_formules():
                             ('tva', 'REAL DEFAULT 0'),
                             ('cle_commande', "TEXT DEFAULT ''"),
                             ('client_adresse', "TEXT DEFAULT ''"),
+                            ('plateforme', "TEXT DEFAULT ''"),
+                            ('lien_paiement', "TEXT DEFAULT ''"),
+                            ('numero_tva', "TEXT DEFAULT ''"),
                             ('statut_paiement', "TEXT DEFAULT 'À régler'")]:
         if nom not in colonnes:
             cursor.execute(f'ALTER TABLE factures ADD COLUMN {nom} {definition}')
@@ -379,7 +382,8 @@ def majorer_facture(facture_id, montant_ttc, montant_ht, tva, duree=None, descri
 
 def ajouter_facture(numero_facture, date_facture, client_nom, montant, email='', description='',
                     formule='', duree=0, montant_ht=0, tva=0, cle_commande='',
-                    client_adresse='', statut_paiement='À régler'):
+                    client_adresse='', statut_paiement='À régler',
+                    plateforme='', lien_paiement='', numero_tva=''):
     """Ajouter une facture. `montant` est le TTC."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -388,10 +392,11 @@ def ajouter_facture(numero_facture, date_facture, client_nom, montant, email='',
         cursor.execute('''
         INSERT INTO factures (numero_facture, date_facture, client_nom, montant, email,
                               description, formule, duree, montant_ht, tva, cle_commande,
-                              client_adresse, statut_paiement)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              client_adresse, statut_paiement, plateforme, lien_paiement, numero_tva)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (numero_facture, date_facture, client_nom, montant, email, description,
-              formule, duree, montant_ht, tva, cle_commande, client_adresse, statut_paiement))
+              formule, duree, montant_ht, tva, cle_commande, client_adresse, statut_paiement,
+              plateforme, lien_paiement, numero_tva))
         
         conn.commit()
         return cursor.lastrowid

@@ -606,6 +606,7 @@ def sync_signnow():
 
 
 # ============ API POUR LE GÉNÉRATEUR DE LIENS (secureetech.com/basket) ============
+@app.route('/api/liens', methods=['POST'])
 @app.route('/api/facture', methods=['POST'])
 def api_creer_facture():
     """Crée une facture depuis le générateur de liens de paiement.
@@ -623,18 +624,28 @@ def api_creer_facture():
     if not jeton_attendu:
         return jsonify({'ok': False, 'erreur': "Aucun jeton d'API configuré sur le serveur."}), 503
 
-    jeton_recu = request.headers.get('X-Api-Token', '')
+    donnees = request.get_json(silent=True) or request.form.to_dict()
+
+    # L'extrait WordPress transmet le jeton dans le corps ; l'en-tête
+    # reste accepté pour un appel direct.
+    jeton_recu = (request.headers.get('X-Api-Token', '')
+                  or (donnees.get('token') or ''))
     if jeton_recu != jeton_attendu:
         return jsonify({'ok': False, 'erreur': 'Jeton invalide.'}), 401
 
-    donnees = request.get_json(silent=True) or request.form.to_dict()
-
-    nom = ' '.join(x for x in [(donnees.get('first_name') or '').strip(),
-                               (donnees.get('last_name') or '').strip()] if x).strip()
+    # L'extrait « Notif dashboard facturation » envoie des noms français.
+    prenom = (donnees.get('prenom') or donnees.get('first_name') or '').strip()
+    patronyme = (donnees.get('nom') or donnees.get('last_name') or '').strip()
+    nom = ' '.join(x for x in [prenom, patronyme] if x).strip()
     nom = nom or (donnees.get('client_nom') or '').strip()
-    email = (donnees.get('client_email') or donnees.get('email') or '').strip()
-    adresse = (donnees.get('client_address') or donnees.get('client_adresse') or '').strip()
-    formule = (donnees.get('description') or donnees.get('formule') or '').strip()
+
+    email = (donnees.get('email') or donnees.get('client_email') or '').strip()
+    adresse = (donnees.get('adresse') or donnees.get('client_address')
+               or donnees.get('client_adresse') or '').strip()
+    formule = (donnees.get('formule') or donnees.get('description') or '').strip()
+    plateforme = (donnees.get('plateforme') or donnees.get('platform') or '').strip()
+    lien = (donnees.get('lien') or donnees.get('link') or '').strip()
+    numero_tva = (donnees.get('tva') or donnees.get('client_vat') or '').strip()
 
     try:
         duree = int(float(donnees.get('months') or donnees.get('duree') or 0))
@@ -650,7 +661,8 @@ def api_creer_facture():
             return None
 
     montant_ht = _nombre(donnees.get('montant_ht') or donnees.get('amount_ht'))
-    montant_ttc = _nombre(donnees.get('amount_ttc') or donnees.get('amount'))
+    montant_ttc = _nombre(donnees.get('montant') or donnees.get('amount_ttc')
+                          or donnees.get('amount'))
 
     # À partir du TTC on retrouve la durée et le prix hors taxes.
     if montant_ht is None and montant_ttc is not None:
@@ -714,7 +726,10 @@ def api_creer_facture():
         montant_ht=calcul['ht'],
         tva=calcul['tva'],
         cle_commande=cle,
-        client_adresse=adresse)
+        client_adresse=adresse,
+        plateforme=plateforme,
+        lien_paiement=lien,
+        numero_tva=numero_tva)
 
     if not facture_id:
         return jsonify({'ok': False,
