@@ -69,6 +69,9 @@
             <form method="post" action="{{ url_for('envoyer_facture', facture_id=f.id) }}" style="display:inline;margin-left:8px" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Envoi...'">
               <button type="submit" style="cursor:pointer">Envoyer</button>
             </form>
+            <form method="post" action="{{ url_for('supprimer_facture', facture_id=f.id) }}" style="display:inline;margin-left:6px" onsubmit="return confirm('Supprimer definitivement la facture {{ f.numero_facture }} ?')">
+              <button type="submit" style="cursor:pointer;color:#a33">Suppr</button>
+            </form>
             {% endif %}
           </td>
       </tr>
