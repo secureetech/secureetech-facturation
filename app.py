@@ -352,9 +352,13 @@ def api_facture_pdf(facture_id):
 
 # ============ CONTRATS ET FACTURES ============
 @app.route('/contrat/<request_id>.pdf')
-@admin_required
+@login_required
 def contrat_pdf(request_id):
-    """Télécharge le contrat signé depuis Dropbox Sign."""
+    """Télécharge le contrat signé depuis Dropbox Sign.
+
+    Ouvert aux vendeurs : ils peuvent renvoyer son contrat à un client.
+    La génération de factures reste réservée à l'administration.
+    """
     cle = os.environ.get('DROPBOX_SIGN_API_KEY', '')
     if not cle:
         return "Clé Dropbox Sign non configurée sur le serveur.", 503

@@ -44,7 +44,9 @@
           <span>{{ ct.titre or 'Contrat' }}
             {% if ct.signe %}<span class="tag vert">signé</span>{% else %}<span class="tag gris">{{ ct.statut }}</span>{% endif %}
           </span>
-          <span class="discret">{{ ct.date_signature or ct.date_creation }}</span>
+          <span class="discret">{{ ct.date_signature or ct.date_creation }}
+            <a href="{{ url_for('contrat_pdf', request_id=ct.signature_request_id) }}"
+               style="margin-left:.6rem;">Télécharger</a></span>
         </div>
       {% endfor %}
     </div>
