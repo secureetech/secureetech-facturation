@@ -196,6 +196,13 @@ def _garantir_colonne_licence():
         connexion.close()
     except Exception:
         pass
+    try:
+        connexion = database.get_connection()
+        connexion.execute("ALTER TABLE factures ADD COLUMN client_telephone TEXT")
+        connexion.commit()
+        connexion.close()
+    except Exception:
+        pass
 
 
 _garantir_colonne_licence()
@@ -927,7 +934,7 @@ def envoyer_facture(facture_id):
     duree_txt = (str(facture.get('duree')) + ' mois') if facture.get('duree') else 'la duree convenue'
     bloc_licence_txt = (f"Votre cle de licence OptiPC :\n{licence}\n\n") if licence else ''
     texte_email = (
-        f"Monsieur, Madame,\n\n"
+        f"Bonjour {client},\n\n"
         f"Nous vous confirmons votre souscription a un contrat de {duree_txt}"
         f" pour le service {formule_f} avec SecureeTech.\n"
         f"Vous trouverez ci-joint votre facture {numero} ({montant_f:.2f} EUR TTC).\n\n"
@@ -956,7 +963,7 @@ def envoyer_facture(facture_id):
         "<div style='height:3px;background:linear-gradient(90deg,#7b2ff7,#f7793b);border-radius:2px;'></div>"
         "</div>"
         "<div style='background:#ffffff;border-radius:14px;padding:26px 30px;margin-top:14px;color:#1e1240;font-size:14px;line-height:1.55;'>"
-        "<p>Monsieur, Madame,</p>"
+        f"<p>Bonjour <b>{client}</b>,</p>"
         "<div style='background:#f3edff;border-radius:10px;padding:16px 18px;margin:14px 0;'>"
         "<p style='margin:0;font-weight:bold;'>Confirmation</p>"
         f"<p style='margin:8px 0 0;'>Nous vous confirmons votre souscription a un contrat de <b>{duree_txt}</b>"
@@ -1148,6 +1155,16 @@ def api_contrat():
 
     telephone_client = (donnees.get('telephone') or donnees.get('phone') or '').strip()
     _ajouter_contact_ringover(nom, email, telephone_client)
+
+    if telephone_client:
+        try:
+            connexion = database.get_connection()
+            connexion.execute("UPDATE factures SET client_telephone = ? WHERE id = ?",
+                              (telephone_client, facture_id))
+            connexion.commit()
+            connexion.close()
+        except Exception as exc:
+            print(f"Stockage telephone (non bloquant) : {exc}")
 
     facture_courante = database.obtenir_facture(facture_id) or {}
     cle_licence = _licence_de_facture(facture_courante, telephone_client)
