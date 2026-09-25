@@ -377,6 +377,36 @@ def obtenir_contrats_client(client_nom, email=''):
     return contrats
 
 
+def obtenir_factures_client(client_nom, email=''):
+    """Factures Stripe d'un client, par email puis par nom."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT * FROM factures_externes
+            WHERE (? <> '' AND LOWER(TRIM(client_email)) = LOWER(TRIM(?)))
+               OR (client_nom <> '' AND LOWER(TRIM(client_nom)) = LOWER(TRIM(?)))
+            ORDER BY date_facture DESC
+        """, (email or '', email or '', client_nom or ''))
+        return [dict(r) for r in cursor.fetchall()]
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
+def compter_factures():
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT COUNT(*) FROM factures_externes")
+        return cursor.fetchone()[0] or 0
+    except Exception:
+        return 0
+    finally:
+        conn.close()
+
+
 def compter_contrats():
     conn = get_connection()
     cursor = conn.cursor()

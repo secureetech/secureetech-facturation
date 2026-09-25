@@ -42,11 +42,29 @@
       {% for ct in cts %}
         <div style="display:flex; justify-content:space-between; align-items:center; padding:.25rem 0;">
           <span>{{ ct.titre or 'Contrat' }}
+            <span class="tag gris">{{ 'SignNow' if ct.source == 'signnow' else 'Dropbox Sign' }}</span>
             {% if ct.signe %}<span class="tag vert">signé</span>{% else %}<span class="tag gris">{{ ct.statut }}</span>{% endif %}
           </span>
           <span class="discret">{{ ct.date_signature or ct.date_creation }}
             <a href="{{ url_for('contrat_pdf', request_id=ct.signature_request_id) }}"
                style="margin-left:.6rem;">Télécharger</a></span>
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% set fx = factures_ext.get(c.client_nom, []) %}
+    {% if fx %}
+    <div class="carte-corps" style="border-bottom:1px solid var(--bordure); padding-top:.9rem; padding-bottom:.9rem;">
+      <div class="discret" style="margin-bottom:.4rem;">Factures</div>
+      {% for f in fx %}
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:.25rem 0;">
+          <span>{{ f.numero or f.facture_id }}
+            {% if f.statut == 'paid' %}<span class="tag vert">payée</span>{% else %}<span class="tag gris">{{ f.statut }}</span>{% endif %}
+          </span>
+          <span class="discret">{{ "%.2f"|format(f.montant) }} {{ f.devise }} &middot; {{ f.date_facture }}
+            {% if f.lien_pdf %}<a href="{{ f.lien_pdf }}" target="_blank" rel="noopener" style="margin-left:.6rem;">PDF</a>{% endif %}
+          </span>
         </div>
       {% endfor %}
     </div>

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
 from functools import wraps
 from datetime import datetime
 import os
@@ -128,12 +128,15 @@ def recherche():
 
     details = {}
     contrats = {}
+    factures_ext = {}
     for client in resultats:
         nom = client['client_nom']
         details[nom] = database.obtenir_paiements_client(nom)
         contrats[nom] = database.obtenir_contrats_client(nom, client.get('email') or '')
+        factures_ext[nom] = database.obtenir_factures_client(nom, client.get('email') or '')
 
     return render_template('recherche.html',
+                           factures_ext=factures_ext,
                            terme=terme,
                            resultats=resultats,
                            details=details,
@@ -174,6 +177,7 @@ def index():
                          nb_paiements=len(paiements),
                          par_source=par_source,
                          contrats=database.compter_contrats(),
+                         nb_factures_ext=database.compter_factures(),
                          clients_top=clients[:10])
 
 # ============ PAGE CLIENTS (AGRÉGÉ) ============
@@ -226,8 +230,10 @@ def detail_client(client_nom):
     sources = set(p['source'] for p in paiements)
     email = next((p['email'] for p in paiements if p.get('email')), '')
     contrats = database.obtenir_contrats_client(client_nom, email)
+    factures_ext = database.obtenir_factures_client(client_nom, email)
 
     return render_template('client_detail.html',
+                         factures_ext=factures_ext,
                          client_nom=client_nom,
                          paiements=paiements,
                          total=total,
@@ -351,14 +357,33 @@ def api_facture_pdf(facture_id):
 
 
 # ============ CONTRATS ET FACTURES ============
-@app.route('/contrat/<request_id>.pdf')
+@app.route('/contrat/<path:request_id>')
 @login_required
 def contrat_pdf(request_id):
-    """Télécharge le contrat signé depuis Dropbox Sign.
+    """Télécharge le contrat signé.
 
-    Ouvert aux vendeurs : ils peuvent renvoyer son contrat à un client.
-    La génération de factures reste réservée à l'administration.
+    Deux origines possibles : SignNow (PDF archivé sur le serveur) ou
+    Dropbox Sign (récupéré par API). Ouvert aux vendeurs.
     """
+    # SignNow : le PDF signé est archivé avec l'application.
+    # On passe par la base pour retrouver le nom exact du fichier.
+    if request_id.startswith('signnow:'):
+        conn = database.get_connection()
+        ligne = conn.execute(
+            'SELECT fichier_local FROM contrats WHERE signature_request_id = ?',
+            (request_id,)).fetchone()
+        conn.close()
+        if not ligne or not ligne['fichier_local']:
+            return "Contrat introuvable.", 404
+
+        nom_fichier = os.path.basename(ligne['fichier_local'])
+        chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              'contrats_signes', nom_fichier)
+        if not os.path.isfile(chemin):
+            return "Fichier du contrat absent du serveur.", 404
+        return send_file(chemin, mimetype='application/pdf',
+                         as_attachment=True, download_name=nom_fichier)
+
     cle = os.environ.get('DROPBOX_SIGN_API_KEY', '')
     if not cle:
         return "Clé Dropbox Sign non configurée sur le serveur.", 503

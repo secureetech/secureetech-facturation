@@ -10,6 +10,7 @@
   <div class="stat"><div class="libelle">Total encaissé</div><div class="valeur">{{ "%.2f"|format(total) }} €</div></div>
   <div class="stat"><div class="libelle">Paiements</div><div class="valeur">{{ nb_paiements }}</div></div>
   <div class="stat"><div class="libelle">Contrats</div><div class="valeur">{{ contrats|length }}</div></div>
+  <div class="stat"><div class="libelle">Factures</div><div class="valeur">{{ factures_ext|length }}</div></div>
 </div>
 
 <div style="margin:1.25rem 0;">
@@ -20,11 +21,12 @@
 <div class="carte">
   {% if contrats %}
   <table>
-    <thead><tr><th>Document</th><th>Signataire</th><th>Statut</th><th>Signé le</th><th></th></tr></thead>
+    <thead><tr><th>Document</th><th>Origine</th><th>Signataire</th><th>Statut</th><th>Signé le</th><th></th></tr></thead>
     <tbody>
       {% for ct in contrats %}
       <tr>
         <td>{{ ct.titre or ct.objet or 'Contrat' }}</td>
+        <td><span class="tag gris">{{ 'SignNow' if ct.source == 'signnow' else 'Dropbox Sign' }}</span></td>
         <td class="discret">{{ ct.signataire_nom }}<br>{{ ct.signataire_email }}</td>
         <td>
           {% if ct.signe %}<span class="tag vert">signé</span>
@@ -38,6 +40,31 @@
   </table>
   {% else %}
   <div class="vide">Aucun contrat rattaché à ce client.</div>
+  {% endif %}
+</div>
+
+<h3>Factures</h3>
+<div class="carte">
+  {% if factures_ext %}
+  <table>
+    <thead><tr><th>Numéro</th><th>Date</th><th>Statut</th><th class="num">Montant</th><th></th></tr></thead>
+    <tbody>
+      {% for f in factures_ext %}
+      <tr>
+        <td>{{ f.numero or f.facture_id }}</td>
+        <td class="discret">{{ f.date_facture }}</td>
+        <td>
+          {% if f.statut == 'paid' %}<span class="tag vert">payée</span>
+          {% else %}<span class="tag gris">{{ f.statut }}</span>{% endif %}
+        </td>
+        <td class="num">{{ "%.2f"|format(f.montant) }} {{ f.devise }}</td>
+        <td>{% if f.lien_pdf %}<a href="{{ f.lien_pdf }}" target="_blank" rel="noopener">PDF</a>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="vide">Aucune facture rattachée à ce client.</div>
   {% endif %}
 </div>
 
