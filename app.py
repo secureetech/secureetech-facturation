@@ -195,6 +195,30 @@ def _cle_commande(email, nom, formule):
     return hashlib.sha256(empreinte.encode()).hexdigest()[:32]
 
 
+def _formule_depuis_montant(montant_ttc):
+    """Retrouve (formule, duree) par le TTC, uniquement si non ambigu.
+
+    La page basket envoie parfois une formule vide (bug du menu WordPress) :
+    quand le montant TTC ne correspond qu'a UNE entree du catalogue, on la
+    retrouve ; s'il est ambigu (plusieurs formules au meme prix), on refuse
+    plutot que de facturer la mauvaise formule.
+    """
+    if montant_ttc is None:
+        return '', 0
+    correspondances = []
+    try:
+        for entree in formules.catalogue():
+            ttc_grille = round(entree['prix_ht'] * (1 + formules.TVA), 2)
+            if abs(ttc_grille - float(montant_ttc)) <= 0.02:
+                correspondances.append(entree)
+    except Exception as exc:
+        print(f"Formule depuis montant : {exc}")
+        return '', 0
+    if len(correspondances) == 1:
+        return correspondances[0]['formule'], correspondances[0]['duree']
+    return '', 0
+
+
 def _emettre_licence_optipc(email, nom, telephone, duree_mois, notes=''):
     """Emet une vraie licence OptiPC (ST-XXXX-XXXX-XXXX) via l'API licences.
 
@@ -1273,10 +1297,18 @@ def api_contrat():
     except (TypeError, ValueError):
         montant_ttc = None
 
+    if not formule and montant_ttc is not None:
+        formule_deduite, duree_deduite = _formule_depuis_montant(montant_ttc)
+        if formule_deduite:
+            formule = formule_deduite
+            print(f"Formule deduite du montant {montant_ttc} : {formule} ({duree_deduite} mois)")
+
     if not nom:
         return jsonify({'ok': False, 'erreur': 'Nom du client manquant.'}), 400
     if not formule:
-        return jsonify({'ok': False, 'erreur': 'Formule manquante.'}), 400
+        return jsonify({'ok': False,
+                        'erreur': "Formule manquante (montant ambigu ou hors grille) :"
+                                  " precisez la formule."}), 400
 
     duree = 0
     montant_ht = None
