@@ -300,7 +300,9 @@ def init_factures_formules():
                             ('duree', 'INTEGER DEFAULT 0'),
                             ('montant_ht', 'REAL DEFAULT 0'),
                             ('tva', 'REAL DEFAULT 0'),
-                            ('cle_commande', "TEXT DEFAULT ''")]:
+                            ('cle_commande', "TEXT DEFAULT ''"),
+                            ('client_adresse', "TEXT DEFAULT ''"),
+                            ('statut_paiement', "TEXT DEFAULT 'À régler'")]:
         if nom not in colonnes:
             cursor.execute(f'ALTER TABLE factures ADD COLUMN {nom} {definition}')
     cursor.execute(
@@ -308,6 +310,33 @@ def init_factures_formules():
         "ON factures(cle_commande) WHERE cle_commande != ''")
     conn.commit()
     conn.close()
+
+
+def prochain_numero(prefixe='ELITE', depart=47):
+    """Numérotation séquentielle par année : ELITE-2026-0048, 0049...
+
+    Reprend la suite du dernier numéro émis ; `depart` fixe le point de
+    départ pour la première facture générée par l'application.
+    """
+    annee = datetime.now().strftime('%Y')
+    motif = f'{prefixe}-{annee}-%'
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('SELECT numero_facture FROM factures WHERE numero_facture LIKE ?', (motif,))
+        rangs = []
+        for (numero,) in cursor.fetchall():
+            queue = (numero or '').rsplit('-', 1)[-1]
+            if queue.isdigit():
+                rangs.append(int(queue))
+        suivant = max(rangs) + 1 if rangs else depart + 1
+    except Exception:
+        suivant = depart + 1
+    finally:
+        conn.close()
+
+    return f'{prefixe}-{annee}-{suivant:04d}'
 
 
 def facture_par_cle(cle):
@@ -349,7 +378,8 @@ def majorer_facture(facture_id, montant_ttc, montant_ht, tva, duree=None, descri
 
 
 def ajouter_facture(numero_facture, date_facture, client_nom, montant, email='', description='',
-                    formule='', duree=0, montant_ht=0, tva=0, cle_commande=''):
+                    formule='', duree=0, montant_ht=0, tva=0, cle_commande='',
+                    client_adresse='', statut_paiement='À régler'):
     """Ajouter une facture. `montant` est le TTC."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -357,10 +387,11 @@ def ajouter_facture(numero_facture, date_facture, client_nom, montant, email='',
     try:
         cursor.execute('''
         INSERT INTO factures (numero_facture, date_facture, client_nom, montant, email,
-                              description, formule, duree, montant_ht, tva, cle_commande)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              description, formule, duree, montant_ht, tva, cle_commande,
+                              client_adresse, statut_paiement)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (numero_facture, date_facture, client_nom, montant, email, description,
-              formule, duree, montant_ht, tva, cle_commande))
+              formule, duree, montant_ht, tva, cle_commande, client_adresse, statut_paiement))
         
         conn.commit()
         return cursor.lastrowid

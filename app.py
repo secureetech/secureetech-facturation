@@ -149,9 +149,10 @@ def _cle_commande(email, nom, formule):
 
 
 def _numero_facture():
-    """Numéro unique, y compris pour deux factures créées dans la même seconde."""
-    return (f"SECT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-            f"-{secrets.token_hex(2).upper()}")
+    """Numéro séquentiel, au format ELITE-2026-0048."""
+    prefixe = os.environ.get('FACTURE_PREFIXE', 'ELITE')
+    depart = int(os.environ.get('FACTURE_DERNIER_NUMERO', '47'))
+    return database.prochain_numero(prefixe, depart)
 
 
 def _quota_recherche():
@@ -373,6 +374,7 @@ def factures():
     if request.method == 'POST':
         client_nom = (request.form.get('client_nom') or '').strip()
         email = (request.form.get('email') or '').strip()
+        adresse = (request.form.get('client_adresse') or '').strip()
         choix = request.form.get('formule') or ''
         prix_libre = (request.form.get('montant_ht') or '').strip()
         date_facture = request.form.get('date_facture') or datetime.now().strftime('%Y-%m-%d')
@@ -402,7 +404,8 @@ def factures():
                     formule=nom_formule,
                     duree=duree,
                     montant_ht=calcul['ht'],
-                    tva=calcul['tva'])
+                    tva=calcul['tva'],
+                    client_adresse=adresse)
                 message = (f"Facture {numero} créée : {formules.description(nom_formule, duree)} — "
                            f"{calcul['ht']:.2f} € HT + {calcul['tva']:.2f} € de TVA "
                            f"= {calcul['ttc']:.2f} € TTC.")
@@ -630,6 +633,7 @@ def api_creer_facture():
                                (donnees.get('last_name') or '').strip()] if x).strip()
     nom = nom or (donnees.get('client_nom') or '').strip()
     email = (donnees.get('client_email') or donnees.get('email') or '').strip()
+    adresse = (donnees.get('client_address') or donnees.get('client_adresse') or '').strip()
     formule = (donnees.get('description') or donnees.get('formule') or '').strip()
 
     try:
@@ -709,7 +713,8 @@ def api_creer_facture():
         duree=duree,
         montant_ht=calcul['ht'],
         tva=calcul['tva'],
-        cle_commande=cle)
+        cle_commande=cle,
+        client_adresse=adresse)
 
     if not facture_id:
         return jsonify({'ok': False,

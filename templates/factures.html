@@ -21,6 +21,9 @@
     <div><label>Nom du client</label><input type="text" name="client_nom" required placeholder="Nom et prénom"></div>
     <div><label>Email</label><input type="email" name="email" placeholder="Facultatif"></div>
   </div>
+  <div style="display:grid; grid-template-columns:1fr; gap:.9rem; margin-top:.9rem;">
+    <div><label>Adresse du client</label><input type="text" name="client_adresse" placeholder="Facultatif — apparaît sur la facture"></div>
+  </div>
 
   <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:.9rem; margin-top:.9rem;">
     <div>
@@ -46,7 +49,7 @@
 <div class="carte">
   {% if factures %}
   <table>
-    <thead><tr><th>Numéro</th><th>Date</th><th>Client</th><th>Formule</th>
+    <thead><tr><th>N° facture</th><th>Date</th><th>Client</th><th>Formule</th>
       <th class="num">HT</th><th class="num">TVA</th><th class="num">TTC</th><th></th></tr></thead>
     <tbody>
       {% for f in factures %}

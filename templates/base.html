@@ -9,21 +9,23 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bleu: #00b4ff; --bleu-fonce: #0967a0; --bleu-nuit: #0b2233;
-      --encre: #1e1e1e; --gris: #6b7684; --gris-clair: #eef2f5;
-      --bordure: #dde5ea; --fond: #f5f8fa; --blanc: #fff; --vert: #1f9d55;
-      --rayon: 10px; --ombre: 0 1px 3px rgba(11,34,51,.08), 0 8px 24px rgba(11,34,51,.06);
+      /* Charte reprise de la facture Secureetech */
+      --orange: #f07800; --orange-fonce: #c05a00;
+      --violet: #2a0c52; --violet-nuit: #0e011d;
+      --encre: #201620; --gris: #8a8590; --gris-clair: #f4f0f5;
+      --bordure: #e6e0ea; --fond: #faf8fb; --blanc: #fff;
+      --creme: #fbf1e7; --vert: #1f9d55;
+      --rayon: 10px; --ombre: 0 1px 3px rgba(32,22,32,.07), 0 8px 24px rgba(32,22,32,.06);
     }
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
            background:var(--fond); color:var(--encre); font-size:15px; line-height:1.5;
            -webkit-font-smoothing:antialiased; }
-    .navbar { background:var(--bleu-nuit); color:#fff; padding:0 2rem; display:flex;
+    .navbar { background:var(--violet-nuit); color:#fff; padding:0 2rem; display:flex;
               justify-content:space-between; align-items:center; height:60px; }
     .marque { font-weight:700; font-size:1.05rem; letter-spacing:-.01em; display:flex;
               align-items:center; gap:.55rem; }
-    .marque .point { width:9px; height:9px; border-radius:50%; background:var(--bleu);
-                     box-shadow:0 0 0 3px rgba(0,180,255,.22); }
+    .navbar { border-bottom:3px solid var(--orange); }
     .liens { display:flex; align-items:center; gap:.25rem; }
     .navbar a { color:rgba(255,255,255,.78); text-decoration:none; padding:.45rem .8rem;
                 border-radius:6px; font-size:.9rem; font-weight:500; transition:background .15s,color .15s; }
@@ -40,24 +42,24 @@
     .carte + .carte { margin-top:1.25rem; }
     .carte-corps { padding:1.25rem 1.4rem; }
     .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:1rem; margin:1.5rem 0; }
-    .stat { background:var(--blanc); border:1px solid var(--bordure); border-left:3px solid var(--bleu);
+    .stat { background:var(--blanc); border:1px solid var(--bordure); border-left:3px solid var(--orange);
             border-radius:var(--rayon); padding:1.1rem 1.25rem; box-shadow:var(--ombre); }
     .stat .libelle { color:var(--gris); font-size:.8rem; text-transform:uppercase;
                      letter-spacing:.05em; font-weight:600; }
     .stat .valeur { font-size:1.65rem; font-weight:680; letter-spacing:-.02em; margin-top:.3rem; }
     table { width:100%; border-collapse:collapse; background:var(--blanc); }
-    thead th { background:var(--gris-clair); color:var(--bleu-fonce); font-size:.76rem; font-weight:650;
+    thead th { background:var(--gris-clair); color:var(--orange-fonce); font-size:.76rem; font-weight:650;
                text-transform:uppercase; letter-spacing:.05em; text-align:left; padding:.7rem 1rem;
                border-bottom:1px solid var(--bordure); white-space:nowrap; }
     thead th a { color:inherit; text-decoration:none; }
-    thead th a:hover { color:var(--bleu); }
+    thead th a:hover { color:var(--orange); }
     tbody td { padding:.8rem 1rem; border-bottom:1px solid var(--bordure); vertical-align:middle; }
     tbody tr:last-child td { border-bottom:none; }
     tbody tr:hover { background:#fafcfd; }
     .num { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
     .centre { text-align:center; }
     .discret { color:var(--gris); font-size:.84rem; }
-    .tag { display:inline-block; background:rgba(0,180,255,.1); color:var(--bleu-fonce);
+    .tag { display:inline-block; background:rgba(240,120,0,.12); color:var(--orange-fonce);
            padding:.15rem .5rem; border-radius:4px; font-size:.76rem; font-weight:600; margin-right:.25rem; }
     .tag.vert { background:rgba(31,157,85,.12); color:var(--vert); }
     .tag.gris { background:var(--gris-clair); color:var(--gris); }
@@ -67,16 +69,16 @@
     input, select { width:100%; padding:.55rem .7rem; border:1px solid var(--bordure); border-radius:7px;
                     font-size:.92rem; font-family:inherit; background:var(--blanc); color:var(--encre);
                     transition:border-color .15s, box-shadow .15s; }
-    input:focus, select:focus { outline:none; border-color:var(--bleu);
-                                box-shadow:0 0 0 3px rgba(0,180,255,.15); }
-    button, .bouton { background:var(--bleu-fonce); color:#fff; border:none; padding:.58rem 1.1rem;
+    input:focus, select:focus { outline:none; border-color:var(--orange);
+                                box-shadow:0 0 0 3px rgba(240,120,0,.18); }
+    button, .bouton { background:var(--orange-fonce); color:#fff; border:none; padding:.58rem 1.1rem;
                       border-radius:7px; font-size:.92rem; font-weight:600; font-family:inherit;
                       cursor:pointer; text-decoration:none; display:inline-block; white-space:nowrap;
                       transition:background .15s; }
-    button:hover, .bouton:hover { background:#07527f; }
-    .bouton.secondaire { background:var(--blanc); color:var(--bleu-fonce); border:1px solid var(--bordure); }
+    button:hover, .bouton:hover { background:#a24b00; }
+    .bouton.secondaire { background:var(--blanc); color:var(--orange-fonce); border:1px solid var(--bordure); }
     .bouton.secondaire:hover { background:var(--gris-clair); }
-    a { color:var(--bleu-fonce); }
+    a { color:var(--orange-fonce); }
     .vide { text-align:center; padding:3rem 1.5rem; color:var(--gris); }
     @media (max-width:760px) {
       .navbar { padding:.6rem 1rem; height:auto; flex-direction:column; align-items:flex-start; }
@@ -93,7 +95,8 @@
   {% if role %}
   <div class="navbar">
     <div class="marque">
-      <span class="point"></span> SecureeTech
+      <img src="{{ url_for('static', filename='logo-secureetech.png') }}" alt="" style="height:26px;">
+      <span style="letter-spacing:.14em;">SECUREETECH</span>
       <span class="badge-role">{{ 'Administration' if est_admin else 'Commercial' }}</span>
     </div>
     <div class="liens">
