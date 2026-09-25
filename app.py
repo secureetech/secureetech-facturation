@@ -13,6 +13,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 import io
+import secrets
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -130,6 +131,12 @@ RECHERCHE_MIN = 5
 # Nombre de recherches autorisées par jour pour un accès commercial.
 # L'administration n'est pas limitée.
 RECHERCHES_PAR_JOUR = int(os.environ.get('RECHERCHES_PAR_JOUR', '10'))
+
+
+def _numero_facture():
+    """Numéro unique, y compris pour deux factures créées dans la même seconde."""
+    return (f"SECT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+            f"-{secrets.token_hex(2).upper()}")
 
 
 def _quota_recherche():
@@ -369,8 +376,7 @@ def factures():
             if not calcul:
                 erreur = "Cette combinaison formule / durée n'existe pas."
             else:
-                numero = (request.form.get('numero_facture') or '').strip() or \
-                    f"SECT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+                numero = (request.form.get('numero_facture') or '').strip() or _numero_facture()
                 database.ajouter_facture(
                     numero_facture=numero,
                     date_facture=date_facture,
@@ -680,8 +686,7 @@ def api_creer_facture():
                                   f"{f' sur {duree} mois' if duree else ''}. "
                                   f"Transmettez « amount » (montant HT)."}), 400
 
-    numero = (donnees.get('numero') or '').strip() or \
-        f"SECT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    numero = (donnees.get('numero') or '').strip() or _numero_facture()
 
     facture_id = database.ajouter_facture(
         numero_facture=numero,
@@ -694,6 +699,10 @@ def api_creer_facture():
         duree=duree,
         montant_ht=calcul['ht'],
         tva=calcul['tva'])
+
+    if not facture_id:
+        return jsonify({'ok': False,
+                        'erreur': f"Le numéro de facture « {numero} » existe déjà."}), 409
 
     return jsonify({
         'ok': True,
