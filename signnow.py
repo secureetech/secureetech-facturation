@@ -146,6 +146,9 @@ def _signataire(document):
 def synchroniser():
     """Met à jour la table des contrats avec les documents SignNow.
 
+    Tout l'historique est conservé : un client ayant signé plusieurs
+    contrats les voit tous apparaître, chacun avec sa date.
+
     Ne touche ni aux contrats Dropbox Sign, ni aux contrats archivés :
     seuls ceux marqués « signnow_api » sont remplacés.
     """
@@ -158,15 +161,6 @@ def synchroniser():
 
     retenus = 0
     ecartes = 0
-    deja_archives = 0
-
-    # Contrats déjà présents via l'archive PDF : on ne les redouble pas.
-    archives = {
-        (r['signataire_email'] or '').lower()
-        for r in c.execute("SELECT signataire_email FROM contrats WHERE source='signnow'")
-    }
-
-    vus = set()
     for doc in documents:
         nom_doc = doc.get('document_name') or doc.get('name') or ''
         email, statut_invite = _signataire(doc)
@@ -175,16 +169,6 @@ def synchroniser():
         if est_un_essai(nom_client, email) or not email:
             ecartes += 1
             continue
-
-        if email in archives:
-            deja_archives += 1
-            continue
-
-        # Un même client renvoie souvent plusieurs brouillons : on garde le premier
-        # rencontré, la liste étant triée du plus récent au plus ancien.
-        if email in vus:
-            continue
-        vus.add(email)
 
         cree = doc.get('created')
         date_creation = ''
@@ -223,7 +207,6 @@ def synchroniser():
         'examines': len(documents),
         'retenus': retenus,
         'ecartes_essais': ecartes,
-        'deja_archives': deja_archives,
     }
 
 

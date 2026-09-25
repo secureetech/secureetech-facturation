@@ -40,7 +40,15 @@ def health():
         'acces_commercial_configure': bool(config.SALES_ACCESS_PASSWORD),
         'memes_mots_de_passe': bool(config.SALES_ACCESS_PASSWORD)
                                and config.ADMIN_ACCESS_PASSWORD == config.SALES_ACCESS_PASSWORD,
+        'dropbox_sign_configure': bool(os.environ.get('DROPBOX_SIGN_API_KEY', '')),
+        'signnow_configure': signnow.configure(),
+        'recherches_par_jour': RECHERCHES_PAR_JOUR,
     }
+    try:
+        infos['contrats'] = database.compter_contrats()
+        infos['factures'] = database.compter_factures()
+    except Exception:
+        pass
     try:
         infos['paiements'] = len(database.obtenir_tous_paiements())
         infos['statut'] = 'ok'
@@ -115,6 +123,41 @@ def deconnexion():
 # Empêche un vendeur de balayer le fichier client avec une lettre ou deux.
 RECHERCHE_MIN = 5
 
+# Nombre de recherches autorisées par jour pour un accès commercial.
+# L'administration n'est pas limitée.
+RECHERCHES_PAR_JOUR = int(os.environ.get('RECHERCHES_PAR_JOUR', '10'))
+
+
+def _quota_recherche():
+    """Compte les recherches du jour et dit s'il en reste.
+
+    Retourne (utilisees, restantes, autorise).
+    L'administration n'est jamais limitée.
+    """
+    if session.get('role') == 'admin':
+        return 0, None, True
+
+    aujourdhui = datetime.now().strftime('%Y-%m-%d')
+    compteur = session.get('recherches') or {}
+    if compteur.get('jour') != aujourdhui:
+        compteur = {'jour': aujourdhui, 'nombre': 0}
+
+    utilisees = compteur.get('nombre', 0)
+    return utilisees, max(0, RECHERCHES_PAR_JOUR - utilisees), utilisees < RECHERCHES_PAR_JOUR
+
+
+def _consommer_recherche():
+    """Incrémente le compteur du jour pour un accès commercial."""
+    if session.get('role') == 'admin':
+        return
+    aujourdhui = datetime.now().strftime('%Y-%m-%d')
+    compteur = session.get('recherches') or {}
+    if compteur.get('jour') != aujourdhui:
+        compteur = {'jour': aujourdhui, 'nombre': 0}
+    compteur['nombre'] = compteur.get('nombre', 0) + 1
+    session['recherches'] = compteur
+    session.modified = True
+
 
 # ============ RECHERCHE (accessible aux vendeurs) ============
 @app.route('/recherche')
@@ -122,10 +165,18 @@ RECHERCHE_MIN = 5
 def recherche():
     """Recherche client. Rien ne s'affiche tant qu'aucun terme n'est saisi."""
     terme = request.args.get('q', '').strip()
+    utilisees, restantes, autorise = _quota_recherche()
 
     resultats = []
+    quota_atteint = False
+
     if len(terme) >= RECHERCHE_MIN:
-        resultats = database.obtenir_clients_summary(recherche=terme)[:50]
+        if autorise:
+            resultats = database.obtenir_clients_summary(recherche=terme)[:50]
+            _consommer_recherche()
+            utilisees, restantes, autorise = _quota_recherche()
+        else:
+            quota_atteint = True
 
     details = {}
     contrats = {}
@@ -143,6 +194,9 @@ def recherche():
                            details=details,
                            contrats=contrats,
                            minimum=RECHERCHE_MIN,
+                           quota_atteint=quota_atteint,
+                           quota_restantes=restantes,
+                           quota_total=RECHERCHES_PAR_JOUR,
                            trop_court=(0 < len(terme) < RECHERCHE_MIN))
 
 # ============ DASHBOARD PRINCIPAL ============
