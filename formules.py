@@ -82,3 +82,29 @@ def description(formule, duree=0):
     if duree:
         return f'Abonnement {formule} — {duree} mois'
     return f'Abonnement {formule}'
+
+
+def depuis_ttc(formule, montant_ttc, tolerance=0.02):
+    """Retrouve la durée et le prix HT à partir du TTC affiché au client.
+
+    Le générateur de liens de paiement transmet le montant TTC
+    (valeur du menu « stph_price_picker »). Dans une même famille,
+    chaque TTC correspond à une seule durée.
+    """
+    try:
+        cible = float(montant_ttc)
+    except (TypeError, ValueError):
+        return None
+
+    if formule in ABONNEMENTS:
+        for duree, prix in ABONNEMENTS[formule].items():
+            if abs(round(prix * (1 + TVA), 2) - cible) <= tolerance:
+                return {'duree': duree, 'ht': float(prix)}
+
+    if formule in OFFRES_UNIQUES:
+        prix = OFFRES_UNIQUES[formule]['prix_ht']
+        if abs(round(prix * (1 + TVA), 2) - cible) <= tolerance:
+            return {'duree': 0, 'ht': float(prix)}
+
+    # Montant hors grille (option « Autre ») : on remonte au HT par le calcul
+    return {'duree': 0, 'ht': round(cible / (1 + TVA), 2)}

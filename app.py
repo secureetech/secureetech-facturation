@@ -649,11 +649,24 @@ def api_creer_facture():
     except (TypeError, ValueError):
         duree = 0
 
-    montant_brut = donnees.get('amount', donnees.get('montant_ht'))
-    try:
-        montant_ht = float(montant_brut) if montant_brut not in (None, '') else None
-    except (TypeError, ValueError):
-        montant_ht = None
+    # Le panier transmet « amount » en TTC (valeur du menu stph_price_picker).
+    # « montant_ht » / « amount_ht » restent acceptés pour un appel explicite.
+    def _nombre(valeur):
+        try:
+            return float(valeur) if valeur not in (None, '') else None
+        except (TypeError, ValueError):
+            return None
+
+    montant_ht = _nombre(donnees.get('montant_ht') or donnees.get('amount_ht'))
+    montant_ttc = _nombre(donnees.get('amount_ttc') or donnees.get('amount'))
+
+    # À partir du TTC on retrouve la durée et le prix hors taxes.
+    if montant_ht is None and montant_ttc is not None:
+        deduit = formules.depuis_ttc(formule, montant_ttc)
+        if deduit:
+            montant_ht = deduit['ht']
+            if not duree:
+                duree = deduit['duree']
 
     if not nom:
         return jsonify({'ok': False, 'erreur': 'Nom du client manquant.'}), 400
