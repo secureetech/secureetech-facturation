@@ -802,6 +802,95 @@ def api_creer_facture():
 
 
 # ============ ERROR HANDLERS ============
+@app.template_filter('licence_optipc')
+def _filtre_licence_optipc(facture):
+    """Affiche la cle de licence OptiPC d'une facture dans les gabarits."""
+    try:
+        return _cle_licence_optipc(facture.get('cle_commande') or '', facture.get('email') or '')
+    except Exception:
+        return ''
+
+
+# ---------------------------------------------------------------------------
+# Envoi d'une facture par email (SMTP Zoho) : PDF joint + lien du contrat
+# + cle de licence OptiPC. Bouton "Envoyer" de la page Factures.
+# ---------------------------------------------------------------------------
+@app.route('/factures/<int:facture_id>/envoyer', methods=['POST'])
+@admin_required
+def envoyer_facture(facture_id):
+    style_page = "font-family:Arial;max-width:520px;margin:60px auto;padding:24px"
+    facture = database.obtenir_facture(facture_id)
+    if not facture:
+        return f"<div style='{style_page}'><p>Facture introuvable.</p><p><a href='/factures'>Retour aux factures</a></p></div>", 404
+    email_client = (facture.get('email') or '').strip()
+    if not email_client:
+        return f"<div style='{style_page}'><p>Cette facture n'a pas d'adresse email client.</p><p><a href='/factures'>Retour aux factures</a></p></div>", 400
+
+    hote = os.environ.get('ZOHO_SMTP_HOST', '')
+    try:
+        port = int(os.environ.get('ZOHO_SMTP_PORT', '465') or 465)
+    except (TypeError, ValueError):
+        port = 465
+    utilisateur = os.environ.get('ZOHO_SMTP_USER', '')
+    mot_de_passe = os.environ.get('ZOHO_SMTP_PASSWORD', '')
+    if not (hote and utilisateur and mot_de_passe):
+        return f"<div style='{style_page}'><p>SMTP Zoho non configure (variables ZOHO_SMTP_HOST / USER / PASSWORD).</p><p><a href='/factures'>Retour aux factures</a></p></div>", 503
+
+    numero = facture.get('numero_facture') or str(facture_id)
+    client = facture.get('client_nom') or ''
+    formule_f = facture.get('formule') or facture.get('description') or ''
+    try:
+        montant_f = float(facture.get('montant') or 0)
+    except (TypeError, ValueError):
+        montant_f = 0.0
+    licence = _cle_licence_optipc(facture.get('cle_commande') or '', email_client)
+    lien_contrat = os.environ.get('SIGNNOW_SIGNING_LINK',
+                                  'https://signnow.com/s/EJxThaKZ')
+
+    try:
+        pdf = facture_pdf.construire(facture, taux_tva=formules.TVA)
+    except Exception as exc:
+        return f"<div style='{style_page}'><p>Impossible de generer le PDF : {exc}</p><p><a href='/factures'>Retour aux factures</a></p></div>", 500
+
+    import smtplib
+    from email.message import EmailMessage
+    message = EmailMessage()
+    message['Subject'] = f"Votre facture {numero} - Secureetech"
+    message['From'] = utilisateur
+    message['To'] = email_client
+    message.set_content(
+        f"Bonjour {client},\n\n"
+        f"Veuillez trouver ci-joint votre facture {numero}"
+        f" ({formule_f} - {montant_f:.2f} EUR TTC).\n\n"
+        f"Votre contrat a signer :\n{lien_contrat}\n\n"
+        f"Votre cle de licence OptiPC (valable 12 mois) :\n{licence}\n\n"
+        "Pour toute question : contact@secureetech.com - 05 54 54 23 43\n"
+        "Assistance du lundi au vendredi, de 10 h a 17 h.\n\n"
+        "Bien cordialement,\n"
+        "L'equipe Secureetech\n"
+        "https://secureetech.com")
+    nom_pdf = 'facture_' + str(numero).replace('/', '-') + '.pdf'
+    message.add_attachment(pdf, maintype='application', subtype='pdf', filename=nom_pdf)
+
+    try:
+        if port == 465:
+            with smtplib.SMTP_SSL(hote, port, timeout=25) as smtp:
+                smtp.login(utilisateur, mot_de_passe)
+                smtp.send_message(message)
+        else:
+            with smtplib.SMTP(hote, port, timeout=25) as smtp:
+                smtp.starttls()
+                smtp.login(utilisateur, mot_de_passe)
+                smtp.send_message(message)
+    except Exception as exc:
+        return f"<div style='{style_page}'><p>Echec de l'envoi : {exc}</p><p><a href='/factures'>Retour aux factures</a></p></div>", 500
+
+    return (f"<div style='{style_page}'><h2>Facture envoyee</h2>"
+            f"<p>La facture {numero} a ete envoyee a <b>{email_client}</b> :"
+            f" PDF joint + lien du contrat + cle OptiPC <code>{licence}</code>.</p>"
+            "<p><a href='/factures'>Retour aux factures</a></p></div>"), 200
+
+
 # ---------------------------------------------------------------------------
 # API /api/contrat : appelee par la page basket WordPress (snippet
 # « Champs adresse et TVA basket »). Cree la facture et renvoie le lien
@@ -827,8 +916,15 @@ def api_contrat():
     adresse = (donnees.get('adresse') or '').strip()
     formule = (donnees.get('formule') or donnees.get('description') or '').strip()
 
+    brut = str(donnees.get('montant') or '').strip()
+    brut = brut.replace('\u202f', '').replace('\u00a0', '').replace(' ', '')
+    brut = brut.replace('EUR', '').replace('\u20ac', '')
+    if ',' in brut and '.' in brut:
+        brut = brut.replace('.', '').replace(',', '.')
+    elif ',' in brut:
+        brut = brut.replace(',', '.')
     try:
-        montant_ttc = float(donnees.get('montant') or 0) or None
+        montant_ttc = float(brut) or None
     except (TypeError, ValueError):
         montant_ttc = None
 
@@ -846,9 +942,20 @@ def api_contrat():
             duree = deduit['duree']
 
     calcul = formules.montants(formule, duree, montant_ht=montant_ht)
+    if not calcul and montant_ttc is not None:
+        ht_estime = round(montant_ttc / (1 + formules.TVA), 2)
+        calcul = {'ttc': round(montant_ttc, 2),
+                  'ht': ht_estime,
+                  'tva': round(montant_ttc - ht_estime, 2)}
+        if not duree:
+            duree = 12
     if not calcul:
         return jsonify({'ok': False,
                         'erreur': f"Impossible de determiner le prix pour « {formule} »."}), 400
+    try:
+        description_facture = formules.description(formule, duree) or formule
+    except Exception:
+        description_facture = formule
 
     cle = _cle_commande(email, nom, formule)
     existante = database.facture_par_cle(cle)
@@ -863,7 +970,7 @@ def api_contrat():
             client_nom=nom,
             montant=calcul['ttc'],
             email=email,
-            description=formules.description(formule, duree),
+            description=description_facture,
             formule=formule,
             duree=duree,
             montant_ht=calcul['ht'],
