@@ -299,15 +299,57 @@ def init_factures_formules():
     for nom, definition in [('formule', "TEXT DEFAULT ''"),
                             ('duree', 'INTEGER DEFAULT 0'),
                             ('montant_ht', 'REAL DEFAULT 0'),
-                            ('tva', 'REAL DEFAULT 0')]:
+                            ('tva', 'REAL DEFAULT 0'),
+                            ('cle_commande', "TEXT DEFAULT ''")]:
         if nom not in colonnes:
             cursor.execute(f'ALTER TABLE factures ADD COLUMN {nom} {definition}')
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_factures_cle "
+        "ON factures(cle_commande) WHERE cle_commande != ''")
+    conn.commit()
+    conn.close()
+
+
+def facture_par_cle(cle):
+    """Retrouve une facture déjà créée pour cette commande."""
+    if not cle:
+        return None
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('SELECT * FROM factures WHERE cle_commande = ?', (cle,))
+        ligne = cursor.fetchone()
+        return dict(ligne) if ligne else None
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+
+def majorer_facture(facture_id, montant_ttc, montant_ht, tva, duree=None, description=None):
+    """Relève le montant d'une facture existante.
+
+    Une commande découpée en plusieurs liens peut arriver en plusieurs appels :
+    on conserve le montant total, donc le plus élevé.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    champs = ['montant = ?', 'montant_ht = ?', 'tva = ?']
+    valeurs = [montant_ttc, montant_ht, tva]
+    if duree is not None:
+        champs.append('duree = ?')
+        valeurs.append(duree)
+    if description is not None:
+        champs.append('description = ?')
+        valeurs.append(description)
+    valeurs.append(facture_id)
+    cursor.execute(f"UPDATE factures SET {', '.join(champs)} WHERE id = ?", valeurs)
     conn.commit()
     conn.close()
 
 
 def ajouter_facture(numero_facture, date_facture, client_nom, montant, email='', description='',
-                    formule='', duree=0, montant_ht=0, tva=0):
+                    formule='', duree=0, montant_ht=0, tva=0, cle_commande=''):
     """Ajouter une facture. `montant` est le TTC."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -315,10 +357,10 @@ def ajouter_facture(numero_facture, date_facture, client_nom, montant, email='',
     try:
         cursor.execute('''
         INSERT INTO factures (numero_facture, date_facture, client_nom, montant, email,
-                              description, formule, duree, montant_ht, tva)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              description, formule, duree, montant_ht, tva, cle_commande)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (numero_facture, date_facture, client_nom, montant, email, description,
-              formule, duree, montant_ht, tva))
+              formule, duree, montant_ht, tva, cle_commande))
         
         conn.commit()
         return cursor.lastrowid

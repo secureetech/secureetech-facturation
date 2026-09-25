@@ -14,6 +14,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 import io
 import secrets
+import hashlib
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -131,6 +132,19 @@ RECHERCHE_MIN = 5
 # Nombre de recherches autorisées par jour pour un accès commercial.
 # L'administration n'est pas limitée.
 RECHERCHES_PAR_JOUR = int(os.environ.get('RECHERCHES_PAR_JOUR', '10'))
+
+
+def _cle_commande(email, nom, formule):
+    """Identifie une commande, pour ne pas la facturer deux fois.
+
+    Un lien de paiement découpé en plusieurs tranches, ou simplement
+    rechargé par le vendeur, retombe sur la même clé et donc sur la
+    même facture. La clé est bornée à la journée : un renouvellement
+    plus tard donnera bien une nouvelle facture.
+    """
+    identite = (email or nom or '').strip().lower()
+    empreinte = f"{identite}|{(formule or '').strip().lower()}|{datetime.now():%Y-%m-%d}"
+    return hashlib.sha256(empreinte.encode()).hexdigest()[:32]
 
 
 def _numero_facture():
@@ -686,6 +700,34 @@ def api_creer_facture():
                                   f"{f' sur {duree} mois' if duree else ''}. "
                                   f"Transmettez « amount » (montant HT)."}), 400
 
+    # Une commande = une facture, même si le paiement est découpé en
+    # plusieurs liens ou si le vendeur régénère le lien.
+    cle = (donnees.get('cle') or donnees.get('order_id') or '').strip() \
+        or _cle_commande(email, nom, formule)
+
+    existante = database.facture_par_cle(cle)
+    if existante:
+        # Une tranche plus élevée que celle enregistrée correspond au total.
+        if calcul['ttc'] > (existante.get('montant') or 0) + 0.01:
+            database.majorer_facture(existante['id'], calcul['ttc'], calcul['ht'],
+                                     calcul['tva'], duree,
+                                     formules.description(formule, duree))
+            existante = database.obtenir_facture(existante['id'])
+
+        return jsonify({
+            'ok': True,
+            'deja_existante': True,
+            'facture_id': existante['id'],
+            'numero': existante['numero_facture'],
+            'client': existante['client_nom'],
+            'formule': existante['formule'],
+            'duree': existante['duree'],
+            'montant_ht': existante['montant_ht'],
+            'tva': existante['tva'],
+            'montant_ttc': existante['montant'],
+            'pdf': url_for('api_facture_pdf', facture_id=existante['id'], _external=True),
+        }), 200
+
     numero = (donnees.get('numero') or '').strip() or _numero_facture()
 
     facture_id = database.ajouter_facture(
@@ -698,7 +740,8 @@ def api_creer_facture():
         formule=formule,
         duree=duree,
         montant_ht=calcul['ht'],
-        tva=calcul['tva'])
+        tva=calcul['tva'],
+        cle_commande=cle)
 
     if not facture_id:
         return jsonify({'ok': False,
@@ -706,6 +749,7 @@ def api_creer_facture():
 
     return jsonify({
         'ok': True,
+        'deja_existante': False,
         'facture_id': facture_id,
         'numero': numero,
         'client': nom,
