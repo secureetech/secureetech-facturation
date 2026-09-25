@@ -50,7 +50,8 @@
   {% if factures %}
   <table>
     <thead><tr><th>N° facture</th><th>Date</th><th>Client</th><th>Formule</th>
-      <th class="num">HT</th><th class="num">TVA</th><th class="num">TTC</th><th></th></tr></thead>
+      <th class="num">HT</th><th class="num">TVA</th><th class="num">TTC</th>
+          <th>Licence OptiPC</th><th></th></tr></thead>
     <tbody>
       {% for f in factures %}
       <tr>
@@ -61,7 +62,15 @@
         <td class="num">{{ "%.2f"|format(f.montant_ht or 0) }} €</td>
         <td class="num">{{ "%.2f"|format(f.tva or 0) }} €</td>
         <td class="num">{{ "%.2f"|format(f.montant or 0) }} €</td>
-        <td><a href="{{ url_for('api_facture_pdf', facture_id=f.id) }}">PDF</a></td>
+        <td><span class="discret" style="font-family:monospace;font-size:11px">{{ f|licence_optipc }}</span></td>
+          <td style="white-space:nowrap">
+            <a href="{{ url_for('api_facture_pdf', facture_id=f.id) }}">PDF</a>
+            {% if f.email %}
+            <form method="post" action="{{ url_for('envoyer_facture', facture_id=f.id) }}" style="display:inline;margin-left:8px" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Envoi...'">
+              <button type="submit" style="cursor:pointer">\ud83d\udce7 Envoyer</button>
+            </form>
+            {% endif %}
+          </td>
       </tr>
       {% endfor %}
     </tbody>
