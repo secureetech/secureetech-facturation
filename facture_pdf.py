@@ -69,13 +69,13 @@ def _date(texte):
 
 
 def _designation(facture):
-    """« Serveur Cloud BASIC 36 » à partir de la formule et de la durée."""
+    """« PRIVILÈGE 36 » : la formule et sa durée, sans autre mention."""
     formule = (facture.get('formule') or '').strip()
     duree = facture.get('duree') or 0
     if not formule:
         return facture.get('description') or 'Prestation Secureetech', ''
 
-    intitule = f"Serveur Cloud {formule.upper()}"
+    intitule = formule.upper()
     if duree:
         intitule += f" {duree}"
     return intitule, DETAILS_FORMULE.get(formule, '')
@@ -128,21 +128,9 @@ def construire(facture, taux_tva=0.21):
     elements += [bandeau, Spacer(1, 0.9 * cm)]
 
     # ---------- Titre et références ----------
-    statut = (facture.get('statut_paiement') or 'À RÉGLER').upper()
-    badge = Table([[Paragraph(f"<font color='#ffffff' size=8><b>{statut}</b></font>", droite)]],
-                  colWidths=[3.2 * cm])
-    badge.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), ORANGE_FONCE),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-    ]))
-
     references = Table([
         [Paragraph(f"<font size=11><b>N° {facture.get('numero_facture','')}</b></font>", droite)],
         [Paragraph(f"<font size=8 color='#8a8590'>Date : {_date(facture.get('date_facture'))}</font>", droite)],
-        [Spacer(1, 4)],
-        [badge],
     ], colWidths=[6.2 * cm])
     references.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
@@ -244,8 +232,8 @@ def construire(facture, taux_tva=0.21):
 
     # ---------- Mention ----------
     mention = Table([[Paragraph(
-        f"<font color='#8a8590'>Statut du paiement : {statut.lower()}.<br/>"
-        "Cette facture est générée électroniquement et valable sans signature manuscrite.</font>",
+        "<font color='#8a8590'>Cette facture est générée électroniquement "
+        "et valable sans signature manuscrite.</font>",
         normal)]], colWidths=[largeur])
     mention.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), CREME),
