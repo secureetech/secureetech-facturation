@@ -95,7 +95,7 @@
   {% if role %}
   <div class="navbar">
     <div class="marque">
-      <img src="{{ url_for('static', filename='logo-secureetech.png') }}" alt="" style="height:26px;">
+      <img src="{{ url_for("static", filename="logo-secureetech.png") }}" alt="" style="height:26px;">
       <span style="letter-spacing:.14em;">SECUREETECH</span>
       <span class="badge-role">{{ 'Administration' if est_admin else 'Commercial' }}</span>
     </div>

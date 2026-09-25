@@ -9,6 +9,7 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm, mm
+from PIL import Image as PILImage
 from reportlab.platypus import (Image, Paragraph, SimpleDocTemplate, Spacer,
                                 Table, TableStyle)
 
@@ -22,6 +23,7 @@ CREME = colors.HexColor('#fbf1e7')
 
 RACINE = os.path.dirname(os.path.abspath(__file__))
 LOGO = os.path.join(RACINE, 'static', 'logo-secureetech.png')
+BANDEAU = os.path.join(RACINE, 'static', 'bandeau-secureetech.jpg')
 
 EMETTEUR = {
     'raison_sociale': os.getenv('SOCIETE_NOM', 'ELITE-ASSISTANCE.SL'),
@@ -109,23 +111,40 @@ def construire(facture, taux_tva=0.21):
     elements = []
 
     # ---------- Bandeau ----------
-    contenu_bandeau = []
-    if os.path.isfile(LOGO):
-        contenu_bandeau.append(Image(LOGO, width=3.2 * cm, height=1.99 * cm))
-    contenu_bandeau.append(Paragraph(
-        "<font size=21 color='#ffffff'><b>S E C U R E E T E C H</b></font>",
-        ParagraphStyle('M', parent=normal, alignment=TA_CENTER, leading=26)))
+    # Image d'origine de la facture Secureetech : dégradé violet,
+    # logo ailé et lettrage. Elle occupe toute la largeur de la page.
+    largeur_page = A4[0]
+    if os.path.isfile(BANDEAU):
+        source = PILImage.open(BANDEAU)
+        hauteur_bandeau = largeur_page * source.size[1] / source.size[0]
+        visuel = Image(BANDEAU, width=largeur_page, height=hauteur_bandeau)
+    else:
+        visuel = Paragraph(
+            "<font size=21 color='#ffffff'><b>S E C U R E E T E C H</b></font>",
+            ParagraphStyle('M', parent=normal, alignment=TA_CENTER, leading=26))
+        hauteur_bandeau = 2.2 * cm
 
-    bandeau = Table([[c] for c in contenu_bandeau], colWidths=[largeur + 3.2 * cm])
+    bandeau = Table([[visuel]], colWidths=[largeur_page])
     bandeau.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), VIOLET_NUIT),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, 0), 14),
-        ('BOTTOMPADDING', (0, -1), (-1, -1), 12),
-        ('LINEBELOW', (0, -1), (-1, -1), 3, ORANGE),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LINEBELOW', (0, 0), (-1, -1), 3, ORANGE),
     ]))
-    elements += [bandeau, Spacer(1, 0.9 * cm)]
+
+    # Le bandeau déborde des marges : on le décale vers la gauche.
+    cadre = Table([[bandeau]], colWidths=[largeur])
+    cadre.setStyle(TableStyle([
+        ('LEFTPADDING', (0, 0), (-1, -1), -doc.leftMargin),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    elements += [cadre, Spacer(1, 0.9 * cm)]
 
     # ---------- Titre et références ----------
     references = Table([
