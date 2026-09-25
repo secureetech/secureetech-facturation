@@ -908,37 +908,31 @@ def _paiement_recu(email_client, nom_client):
 
 
 def _contrat_signe_du_client(email_client, nom_client):
-    """Ligne du contrat signe le plus recent du client, sinon None."""
+    """Contrat signe le plus recent du client, sinon None."""
     try:
-        connexion = database.get_connection()
-        curseur = connexion.execute("SELECT * FROM contrats")
-        colonnes = [d[0] for d in curseur.description]
-        lignes = [dict(zip(colonnes, l)) for l in curseur.fetchall()]
-        connexion.close()
+        lignes = database.obtenir_contrats_client(nom_client or '', email_client or '')
     except Exception as exc:
         print(f"Lecture contrats : {exc}")
         return None
-    email_bas = (email_client or '').strip().lower()
-    nom_bas = (nom_client or '').strip().lower()
-    candidats = []
-    for ligne in lignes:
-        valeurs = {str(k).lower(): ('' if val is None else str(val))
-                   for k, val in ligne.items()}
-        statut = ''
-        for cle_statut in ('statut', 'status', 'etat', 'state'):
-            if cle_statut in valeurs:
-                statut = valeurs[cle_statut].lower()
-                break
-        if statut and 'sign' not in statut:
-            continue
-        texte = ' '.join(valeurs.values()).lower()
-        if (email_bas and email_bas in texte) or (nom_bas and nom_bas in texte):
-            candidats.append(ligne)
-    return candidats[-1] if candidats else None
+    signes = []
+    for ligne in (lignes or []):
+        try:
+            statut = str(ligne.get('statut') or ligne.get('status') or '').lower()
+        except Exception:
+            statut = ''
+        if not statut or 'sign' in statut:
+            signes.append(ligne)
+    return signes[-1] if signes else None
 
 
 def _request_id_contrat(ligne):
-    """Retrouve l'identifiant (40 hex) du contrat dans la ligne."""
+    """Identifiant de signature du contrat (colonne dediee, sinon 40 hex)."""
+    try:
+        rid = str(ligne.get('signature_request_id') or '').strip()
+    except Exception:
+        rid = ''
+    if rid:
+        return rid
     for valeur in (ligne or {}).values():
         s = str(valeur or '').strip()
         if len(s) == 40 and all(c in '0123456789abcdef' for c in s.lower()):
@@ -946,28 +940,48 @@ def _request_id_contrat(ligne):
     return ''
 
 
-def _pdf_contrat_signe(request_id):
-    """Bytes du PDF du contrat signe (fichier local, sinon SignNow)."""
+def _pdf_contrat_signe(ligne_contrat):
+    """Bytes du PDF du contrat signe, selon son origine (comme /contrat/<id>)."""
+    if not ligne_contrat:
+        return None
+    request_id = _request_id_contrat(ligne_contrat)
     if not request_id:
         return None
-    dossiers = ('contrats_signes',
-                os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             'contrats_signes'))
-    for dossier in dossiers:
-        try:
-            if os.path.isdir(dossier):
-                for nom_fichier in os.listdir(dossier):
-                    if request_id in nom_fichier and nom_fichier.lower().endswith('.pdf'):
-                        with open(os.path.join(dossier, nom_fichier), 'rb') as flux:
-                            return flux.read()
-        except Exception:
-            continue
     try:
-        contenu = signnow.telecharger(request_id)
-        if contenu:
-            return contenu
+        if request_id.startswith('signnow:'):
+            try:
+                fichier_local = str(ligne_contrat.get('fichier_local') or '')
+            except Exception:
+                fichier_local = ''
+            if not fichier_local:
+                connexion = database.get_connection()
+                trouve = connexion.execute(
+                    'SELECT fichier_local FROM contrats WHERE signature_request_id = ?',
+                    (request_id,)).fetchone()
+                connexion.close()
+                fichier_local = (trouve['fichier_local'] if trouve else '') or ''
+            if not fichier_local:
+                return None
+            chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  'contrats_signes', os.path.basename(fichier_local))
+            if os.path.isfile(chemin):
+                with open(chemin, 'rb') as flux:
+                    return flux.read()
+            return None
+        if request_id.startswith('signnow_api:'):
+            return signnow.telecharger(request_id.split(':', 1)[1])
+        cle_dropbox = os.environ.get('DROPBOX_SIGN_API_KEY', '')
+        if not cle_dropbox:
+            return None
+        import requests as requetes_http
+        reponse = requetes_http.get(
+            f'https://api.hellosign.com/v3/signature_request/files/{request_id}',
+            auth=(cle_dropbox, ''), params={'file_type': 'pdf'}, timeout=30)
+        if reponse.status_code == 200:
+            return reponse.content
+        print(f"Contrat Dropbox indisponible (code {reponse.status_code})")
     except Exception as exc:
-        print(f"Telechargement contrat : {exc}")
+        print(f"Recuperation contrat : {exc}")
     return None
 
 
@@ -1019,7 +1033,7 @@ def envoyer_facture(facture_id):
                 "<p>L'email part uniquement quand le paiement est recu"
                 " et le contrat signe.</p>"
                 "<p><a href='/factures'>Retour aux factures</a></p></div>"), 409
-    pdf_contrat = _pdf_contrat_signe(_request_id_contrat(contrat_ligne))
+    pdf_contrat = _pdf_contrat_signe(contrat_ligne)
     lien_contrat = os.environ.get('SIGNNOW_SIGNING_LINK',
                                   'https://signnow.com/s/EJxThaKZ')
     if pdf_contrat:
