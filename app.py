@@ -310,6 +310,168 @@ def _licence_de_facture(facture, telephone=''):
 
 
 def _ajouter_contact_ringover(nom, email, telephone=''):
+    """Ajoute le client aux contacts Ringover (best effort, jamais bloquant).
+
+    Le numero est converti automatiquement au format international :
+    0X XX XX XX XX (France) devient 33XXXXXXXXX ; un indicatif deja
+    present (+32, 0032, 33...) est respecte tel quel.
+    """
+    cle_api = os.environ.get('RINGOVER_API_KEY', '')
+    if not cle_api or not (email or telephone):
+        return
+    try:
+        import json as json_mod
+        import urllib.request as urlreq
+        morceaux = (nom or '').strip().split(' ', 1)
+        contact = {
+            'firstname': morceaux[0] if morceaux and morceaux[0] else (nom or 'Client'),
+            'lastname': morceaux[1] if len(morceaux) > 1 else '',
+            'is_shared': True,
+        }
+        if telephone:
+            chiffres = ''.join(c for c in str(telephone) if c.isdigit())
+            if chiffres.startswith('00'):
+                chiffres = chiffres[2:]
+            elif chiffres.startswith('0') and len(chiffres) == 10:
+                chiffres = '33' + chiffres[1:]
+            if chiffres:
+                contact['numbers'] = [{'number': int(chiffres), 'type': 'mobile'}]
+        if email:
+            contact['emails'] = [{'email': email, 'type': 'home'}]
+        corps = json_mod.dumps({'contacts': [contact]}).encode('utf-8')
+        requete = urlreq.Request(
+            'https://public-api.ringover.com/v2/contacts',
+            data=corps,
+            headers={'Authorization': cle_api,
+                     'Content-Type': 'application/json',
+                     'User-Agent': 'Secureetech-Facturation/1.0'},
+            method='POST')
+        urlreq.urlopen(requete, timeout=10)
+        print(f"Ringover : contact ajoute ({email or telephone})")
+    except Exception as exc:
+        detail = ''
+        try:
+            detail = exc.read().decode('utf-8')[:200]
+        except Exception:
+            pass
+        print(f"Ringover (non bloquant) : {exc} {detail}")
+
+
+def _formule_depuis_montant(montant_ttc):
+    """Retrouve (formule, duree) par le TTC, uniquement si non ambigu.
+
+    La page basket envoie parfois une formule vide (bug du menu WordPress) :
+    quand le montant TTC ne correspond qu'a UNE entree du catalogue, on la
+    retrouve ; s'il est ambigu (plusieurs formules au meme prix), on refuse
+    plutot que de facturer la mauvaise formule.
+    """
+    if montant_ttc is None:
+        return '', 0
+    correspondances = []
+    try:
+        for entree in formules.catalogue():
+            ttc_grille = round(entree['prix_ht'] * (1 + formules.TVA), 2)
+            if abs(ttc_grille - float(montant_ttc)) <= 0.02:
+                correspondances.append(entree)
+    except Exception as exc:
+        print(f"Formule depuis montant : {exc}")
+        return '', 0
+    if len(correspondances) == 1:
+        return correspondances[0]['formule'], correspondances[0]['duree']
+    return '', 0
+
+
+def _emettre_licence_optipc(email, nom, telephone, duree_mois, notes=''):
+    """Emet une vraie licence OptiPC (ST-XXXX-XXXX-XXXX) via l'API licences.
+
+    La licence apparait dans l'historique du License Desk. Non bloquant :
+    en cas d'echec, renvoie une chaine vide et la facturation continue.
+    """
+    jeton = os.environ.get('OPTIPC_ADMIN_TOKEN', '')
+    base_api = os.environ.get('OPTIPC_API_BASE', 'https://api.secureetech.com')
+    if not jeton:
+        return ''
+    try:
+        import json as json_mod
+        import urllib.request as urlreq
+        corps = json_mod.dumps({
+            'email': email or '',
+            'name': nom or '',
+            'phone': telephone or '',
+            'months': int(duree_mois or 12),
+            'seats': 1,
+            'notes': notes or '',
+        }).encode('utf-8')
+        requete = urlreq.Request(
+            base_api + '/v1/admin/issue',
+            data=corps,
+            headers={'x-admin-token': jeton,
+                     'Content-Type': 'application/json',
+                     'User-Agent': 'Secureetech-Facturation/1.0'},
+            method='POST')
+        reponse = urlreq.urlopen(requete, timeout=20)
+        donnees_api = json_mod.loads(reponse.read().decode('utf-8'))
+        cle_emise = donnees_api.get('key', '') or ''
+        if cle_emise:
+            print(f"OptiPC : licence emise {cle_emise} pour {email}")
+        return cle_emise
+    except Exception as exc:
+        print(f"OptiPC issue (non bloquant) : {exc}")
+        return ''
+
+
+def _garantir_colonne_licence():
+    """Ajoute la colonne licence_optipc a la table factures si absente."""
+    try:
+        connexion = database.get_connection()
+        connexion.execute("ALTER TABLE factures ADD COLUMN licence_optipc TEXT")
+        connexion.commit()
+        connexion.close()
+    except Exception:
+        pass
+    try:
+        connexion = database.get_connection()
+        connexion.execute("ALTER TABLE factures ADD COLUMN client_telephone TEXT")
+        connexion.commit()
+        connexion.close()
+    except Exception:
+        pass
+
+
+_garantir_colonne_licence()
+
+
+def _stocker_licence(facture_id, cle):
+    try:
+        connexion = database.get_connection()
+        connexion.execute("UPDATE factures SET licence_optipc = ? WHERE id = ?",
+                          (cle, facture_id))
+        connexion.commit()
+        connexion.close()
+    except Exception as exc:
+        print(f"Stockage licence (non bloquant) : {exc}")
+
+
+def _licence_de_facture(facture, telephone=''):
+    """Licence de la facture ; l'emet via l'API OptiPC si pas encore emise."""
+    try:
+        cle = (facture.get('licence_optipc') or '').strip()
+    except Exception:
+        cle = ''
+    if cle:
+        return cle
+    cle = _emettre_licence_optipc(
+        facture.get('email') or '',
+        facture.get('client_nom') or '',
+        telephone,
+        facture.get('duree') or 12,
+        f"Basket - facture {facture.get('numero_facture') or facture.get('id')}")
+    if cle:
+        _stocker_licence(facture['id'], cle)
+    return cle
+
+
+def _ajouter_contact_ringover(nom, email, telephone=''):
     """Ajoute le client aux contacts Ringover (best effort, jamais bloquant)."""
     cle_api = os.environ.get('RINGOVER_API_KEY', '')
     if not cle_api or not (email or telephone):
@@ -1362,7 +1524,8 @@ def api_contrat():
                             'erreur': f"Le numero de facture « {numero} » existe deja."}), 409
 
     telephone_client = (donnees.get('telephone') or donnees.get('phone') or '').strip()
-    _ajouter_contact_ringover(nom, email, telephone_client)
+    if not existante:
+        _ajouter_contact_ringover(nom, email, telephone_client)
 
     if telephone_client:
         try:
