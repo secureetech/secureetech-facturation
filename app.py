@@ -44,6 +44,8 @@ def health():
                                and config.ADMIN_ACCESS_PASSWORD == config.SALES_ACCESS_PASSWORD,
         'dropbox_sign_configure': bool(os.environ.get('DROPBOX_SIGN_API_KEY', '')),
         'signnow_configure': signnow.configure(),
+        'api_facture_configure': bool(os.environ.get('FACTURATION_API_TOKEN', '')
+                                      or os.environ.get('LINK_HUB_TOKEN', '')),
         'recherches_par_jour': RECHERCHES_PAR_JOUR,
     }
     try:
@@ -609,6 +611,89 @@ def sync_signnow():
         return render_template('sync.html', erreur=f"Erreur inattendue : {erreur}")
 
     return render_template('sync.html', resultat=resultat)
+
+
+
+# ============ API POUR LE GÉNÉRATEUR DE LIENS (secureetech.com/basket) ============
+@app.route('/api/facture', methods=['POST'])
+def api_creer_facture():
+    """Crée une facture depuis le générateur de liens de paiement.
+
+    Appelé par le plugin WordPress au moment où le vendeur génère le lien.
+    Authentification par jeton partagé, dans l'en-tête X-Api-Token.
+
+    Champs attendus (ceux du formulaire panier) :
+      first_name, last_name, client_email, description (la formule),
+      months (durée), amount (montant HT ; facultatif si la formule
+      et la durée suffisent à le déduire de la grille).
+    """
+    jeton_attendu = (os.environ.get('FACTURATION_API_TOKEN', '')
+                     or os.environ.get('LINK_HUB_TOKEN', ''))
+    if not jeton_attendu:
+        return jsonify({'ok': False, 'erreur': "Aucun jeton d'API configuré sur le serveur."}), 503
+
+    jeton_recu = request.headers.get('X-Api-Token', '')
+    if jeton_recu != jeton_attendu:
+        return jsonify({'ok': False, 'erreur': 'Jeton invalide.'}), 401
+
+    donnees = request.get_json(silent=True) or request.form.to_dict()
+
+    nom = ' '.join(x for x in [(donnees.get('first_name') or '').strip(),
+                               (donnees.get('last_name') or '').strip()] if x).strip()
+    nom = nom or (donnees.get('client_nom') or '').strip()
+    email = (donnees.get('client_email') or donnees.get('email') or '').strip()
+    formule = (donnees.get('description') or donnees.get('formule') or '').strip()
+
+    try:
+        duree = int(float(donnees.get('months') or donnees.get('duree') or 0))
+    except (TypeError, ValueError):
+        duree = 0
+
+    montant_brut = donnees.get('amount', donnees.get('montant_ht'))
+    try:
+        montant_ht = float(montant_brut) if montant_brut not in (None, '') else None
+    except (TypeError, ValueError):
+        montant_ht = None
+
+    if not nom:
+        return jsonify({'ok': False, 'erreur': 'Nom du client manquant.'}), 400
+    if not formule:
+        return jsonify({'ok': False, 'erreur': 'Formule manquante.'}), 400
+
+    calcul = formules.montants(formule, duree, montant_ht=montant_ht)
+    if not calcul:
+        return jsonify({'ok': False,
+                        'erreur': f"Impossible de déterminer le prix pour « {formule} »"
+                                  f"{f' sur {duree} mois' if duree else ''}. "
+                                  f"Transmettez « amount » (montant HT)."}), 400
+
+    numero = (donnees.get('numero') or '').strip() or \
+        f"SECT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
+    facture_id = database.ajouter_facture(
+        numero_facture=numero,
+        date_facture=datetime.now().strftime('%Y-%m-%d'),
+        client_nom=nom,
+        montant=calcul['ttc'],
+        email=email,
+        description=formules.description(formule, duree),
+        formule=formule,
+        duree=duree,
+        montant_ht=calcul['ht'],
+        tva=calcul['tva'])
+
+    return jsonify({
+        'ok': True,
+        'facture_id': facture_id,
+        'numero': numero,
+        'client': nom,
+        'formule': formule,
+        'duree': duree,
+        'montant_ht': calcul['ht'],
+        'tva': calcul['tva'],
+        'montant_ttc': calcul['ttc'],
+        'pdf': url_for('api_facture_pdf', facture_id=facture_id, _external=True),
+    }), 201
 
 
 # ============ ERROR HANDLERS ============
