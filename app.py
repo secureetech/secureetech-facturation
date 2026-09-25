@@ -148,16 +148,87 @@ def _cle_commande(email, nom, formule):
     return hashlib.sha256(empreinte.encode()).hexdigest()[:32]
 
 
-def _cle_licence_optipc(cle_commande, email):
-    """Cle de licence OptiPC (12 mois), deterministe par commande.
+def _emettre_licence_optipc(email, nom, telephone, duree_mois, notes=''):
+    """Emet une vraie licence OptiPC (ST-XXXX-XXXX-XXXX) via l'API licences.
 
-    Derivee de la cle de commande + email avec la SECRET_KEY du serveur :
-    la meme commande redonne toujours la meme licence (idempotent),
-    sans table supplementaire en base.
+    La licence apparait dans l'historique du License Desk. Non bloquant :
+    en cas d'echec, renvoie une chaine vide et la facturation continue.
     """
-    graine = f"{cle_commande}|{(email or '').lower()}|optipc-12m".encode()
-    empreinte = hashlib.sha256(config.SECRET_KEY.encode() + graine).hexdigest().upper()
-    return f"OPTIPC-{empreinte[0:4]}-{empreinte[4:8]}-{empreinte[8:12]}-{empreinte[12:16]}"
+    jeton = os.environ.get('OPTIPC_ADMIN_TOKEN', '')
+    base_api = os.environ.get('OPTIPC_API_BASE', 'https://api.secureetech.com')
+    if not jeton:
+        return ''
+    try:
+        import json as json_mod
+        import urllib.request as urlreq
+        corps = json_mod.dumps({
+            'email': email or '',
+            'name': nom or '',
+            'phone': telephone or '',
+            'months': int(duree_mois or 12),
+            'seats': 1,
+            'notes': notes or '',
+        }).encode('utf-8')
+        requete = urlreq.Request(
+            base_api + '/v1/admin/issue',
+            data=corps,
+            headers={'x-admin-token': jeton,
+                     'Content-Type': 'application/json',
+                     'User-Agent': 'Secureetech-Facturation/1.0'},
+            method='POST')
+        reponse = urlreq.urlopen(requete, timeout=20)
+        donnees_api = json_mod.loads(reponse.read().decode('utf-8'))
+        cle_emise = donnees_api.get('key', '') or ''
+        if cle_emise:
+            print(f"OptiPC : licence emise {cle_emise} pour {email}")
+        return cle_emise
+    except Exception as exc:
+        print(f"OptiPC issue (non bloquant) : {exc}")
+        return ''
+
+
+def _garantir_colonne_licence():
+    """Ajoute la colonne licence_optipc a la table factures si absente."""
+    try:
+        connexion = database.get_connection()
+        connexion.execute("ALTER TABLE factures ADD COLUMN licence_optipc TEXT")
+        connexion.commit()
+        connexion.close()
+    except Exception:
+        pass
+
+
+_garantir_colonne_licence()
+
+
+def _stocker_licence(facture_id, cle):
+    try:
+        connexion = database.get_connection()
+        connexion.execute("UPDATE factures SET licence_optipc = ? WHERE id = ?",
+                          (cle, facture_id))
+        connexion.commit()
+        connexion.close()
+    except Exception as exc:
+        print(f"Stockage licence (non bloquant) : {exc}")
+
+
+def _licence_de_facture(facture, telephone=''):
+    """Licence de la facture ; l'emet via l'API OptiPC si pas encore emise."""
+    try:
+        cle = (facture.get('licence_optipc') or '').strip()
+    except Exception:
+        cle = ''
+    if cle:
+        return cle
+    cle = _emettre_licence_optipc(
+        facture.get('email') or '',
+        facture.get('client_nom') or '',
+        telephone,
+        facture.get('duree') or 12,
+        f"Basket - facture {facture.get('numero_facture') or facture.get('id')}")
+    if cle:
+        _stocker_licence(facture['id'], cle)
+    return cle
 
 
 def _ajouter_contact_ringover(nom, email, telephone=''):
@@ -746,8 +817,8 @@ def api_creer_facture():
         return jsonify({
             'ok': True,
             'deja_existante': True,
-            'licence_optipc': _cle_licence_optipc(cle, email),
-            'licence_duree_mois': 12,
+            'licence_optipc': _licence_de_facture(existante),
+            'licence_duree_mois': existante.get('duree') or 12,
             'facture_id': existante['id'],
             'numero': existante['numero_facture'],
             'client': existante['client_nom'],
@@ -788,8 +859,8 @@ def api_creer_facture():
     return jsonify({
         'ok': True,
         'deja_existante': False,
-        'licence_optipc': _cle_licence_optipc(cle, email),
-        'licence_duree_mois': 12,
+        'licence_optipc': _licence_de_facture(database.obtenir_facture(facture_id) or {}),
+        'licence_duree_mois': duree or 12,
         'facture_id': facture_id,
         'numero': numero,
         'client': nom,
@@ -807,7 +878,7 @@ def api_creer_facture():
 def _filtre_licence_optipc(facture):
     """Affiche la cle de licence OptiPC d'une facture dans les gabarits."""
     try:
-        return _cle_licence_optipc(facture.get('cle_commande') or '', facture.get('email') or '')
+        return (facture.get('licence_optipc') or '').strip()
     except Exception:
         return ''
 
@@ -844,7 +915,7 @@ def envoyer_facture(facture_id):
         montant_f = float(facture.get('montant') or 0)
     except (TypeError, ValueError):
         montant_f = 0.0
-    licence = _cle_licence_optipc(facture.get('cle_commande') or '', email_client)
+    licence = _licence_de_facture(facture)
     lien_contrat = os.environ.get('SIGNNOW_SIGNING_LINK',
                                   'https://signnow.com/s/EJxThaKZ')
 
@@ -853,19 +924,78 @@ def envoyer_facture(facture_id):
     except Exception as exc:
         return f"<div style='{style_page}'><p>Impossible de generer le PDF : {exc}</p><p><a href='/factures'>Retour aux factures</a></p></div>", 500
 
+    duree_txt = (str(facture.get('duree')) + ' mois') if facture.get('duree') else 'la duree convenue'
+    bloc_licence_txt = (f"Votre cle de licence OptiPC :\n{licence}\n\n") if licence else ''
     texte_email = (
-        f"Bonjour {client},\n\n"
-        f"Veuillez trouver ci-joint votre facture {numero}"
-        f" ({formule_f} - {montant_f:.2f} EUR TTC).\n\n"
+        f"Monsieur, Madame,\n\n"
+        f"Nous vous confirmons votre souscription a un contrat de {duree_txt}"
+        f" pour le service {formule_f} avec SecureeTech.\n"
+        f"Vous trouverez ci-joint votre facture {numero} ({montant_f:.2f} EUR TTC).\n\n"
         f"Votre contrat a signer :\n{lien_contrat}\n\n"
-        f"Votre cle de licence OptiPC (valable 12 mois) :\n{licence}\n\n"
-        "Pour toute question : contact@secureetech.com - 05 54 54 23 43\n"
-        "Assistance du lundi au vendredi, de 10 h a 17 h.\n\n"
-        "Bien cordialement,\n"
-        "L'equipe Secureetech\n"
-        "https://secureetech.com")
+        + bloc_licence_txt +
+        "Assistance & entretien : 09 80 80 17 59"
+        " (du lundi au vendredi, de 10h00 a 17h00)\n\n"
+        "En vous remerciant pour votre confiance,\n"
+        "L'equipe SecureeTech\n"
+        "Daniel Moreau - Responsable service client & technique\n"
+        "contact@secureetech.com - secureetech.com")
+    bloc_licence_html = ''
+    if licence:
+        bloc_licence_html = (
+            "<div style='background:#efe9ff;border:1px solid #c9b8ff;border-radius:10px;"
+            "padding:16px 18px;margin:14px 0;'>"
+            "<p style='margin:0;font-weight:bold;'>Votre cle de licence OptiPC</p>"
+            "<p style='margin:8px 0 0;font-family:Consolas,monospace;font-size:18px;"
+            "letter-spacing:1px;'><b>" + licence + "</b></p></div>")
+    html_email = (
+        "<!DOCTYPE html><html><body style='margin:0;padding:0;background:#2a1b4d;"
+        "font-family:Arial,Helvetica,sans-serif;'>"
+        "<div style='max-width:680px;margin:0 auto;padding:24px;'>"
+        "<div style='background:#1e1240;border-radius:14px;padding:24px 30px;'>"
+        "<h1 style='color:#ffffff;font-size:21px;margin:0 0 10px;'>Secureetech | assistance informatique Premium</h1>"
+        "<div style='height:3px;background:linear-gradient(90deg,#7b2ff7,#f7793b);border-radius:2px;'></div>"
+        "</div>"
+        "<div style='background:#ffffff;border-radius:14px;padding:26px 30px;margin-top:14px;color:#1e1240;font-size:14px;line-height:1.55;'>"
+        "<p>Monsieur, Madame,</p>"
+        "<div style='background:#f3edff;border-radius:10px;padding:16px 18px;margin:14px 0;'>"
+        "<p style='margin:0;font-weight:bold;'>Confirmation</p>"
+        f"<p style='margin:8px 0 0;'>Nous vous confirmons votre souscription a un contrat de <b>{duree_txt}</b>"
+        f" pour le service <b>{formule_f}</b> avec SecureeTech.<br>"
+        "Ce service est conforme au <b>RGPD</b> (Reglement General sur la Protection des Donnees).</p></div>"
+        "<div style='background:#ffffff;border:1px solid #e6e0f5;border-radius:10px;padding:16px 18px;margin:14px 0;'>"
+        "<p style='margin:0;font-weight:bold;'>Mise en place de la securite</p>"
+        "<p style='margin:8px 0 0;'>Notre informaticien va proceder a la mise en place de la securite de votre systeme"
+        " en installant un <b>antivirus de derniere generation</b> ainsi qu'un <b>programme d'optimisation performant</b>.</p>"
+        "<p style='margin:8px 0 0;'>L'antivirus reduit les risques lies aux menaces courantes (malwares, sites frauduleux,"
+        " tentatives d'intrusion) et l'outil d'optimisation ameliore la stabilite et les performances de votre appareil.</p></div>"
+        + bloc_licence_html +
+        f"<div style='background:#ffffff;border:1px solid #e6e0f5;border-radius:10px;padding:16px 18px;margin:14px 0;'>"
+        f"<p style='margin:0;font-weight:bold;'>Votre facture et votre contrat</p>"
+        f"<p style='margin:8px 0 0;'>Votre facture <b>{numero}</b> ({montant_f:.2f} EUR TTC) est jointe a cet email.<br>"
+        f"Votre contrat a signer : <a href='{lien_contrat}' style='color:#7b2ff7;'>{lien_contrat}</a></p></div>"
+        "<div style='background:#ede9fb;border-radius:10px;padding:16px 18px;margin:14px 0;'>"
+        "<p style='margin:0;font-weight:bold;'>Assistance &amp; entretien</p>"
+        "<p style='margin:8px 0 0;'>Pour toute question, demande d'entretien ou besoin d'assistance,"
+        " vous pouvez nous joindre au : <b>09 80 80 17 59</b><br>(du lundi au vendredi, de 10h00 a 17h00)</p></div>"
+        "<div style='background:#fdf3e7;border-radius:10px;padding:16px 18px;margin:14px 0;'>"
+        "<p style='margin:0;font-weight:bold;'>Engagement juridique &amp; demandes de remboursement</p>"
+        "<p style='margin:8px 0 0;'>Conformement a l'article <b>1103</b> du Code civil, le contrat signe engage juridiquement les parties.</p>"
+        "<p style='margin:8px 0 0;'>En cas de demande de remboursement, vous devez imperativement <b>contacter SecureeTech</b>"
+        " afin de rechercher une solution <b>a l'amiable</b>.</p>"
+        "<p style='margin:8px 0 0;'>Toute contestation initiee directement aupres de votre banque <b>sans nous avoir contactes au prealable</b>"
+        " pourra etre contestee, et nous nous reservons le droit d'engager toute mesure necessaire afin de faire respecter le contrat.</p></div>"
+        "<p style='margin:18px 0 4px;'>En vous remerciant pour votre confiance,<br><b>L'equipe SecureeTech</b></p>"
+        "<div style='background:#1e1240;border-radius:10px;padding:18px 22px;margin-top:14px;color:#ffffff;'>"
+        "<p style='margin:0;font-size:18px;font-weight:bold;'>Daniel Moreau</p>"
+        "<p style='margin:2px 0 12px;color:#f7793b;font-size:11px;letter-spacing:1.5px;'>RESPONSABLE SERVICE CLIENT &amp; TECHNIQUE</p>"
+        "<p style='margin:0;font-size:13px;line-height:1.9;'>"
+        "<span style='color:#f7793b;font-size:11px;letter-spacing:1px;'>TEL</span>&nbsp;&nbsp;&nbsp;<b>09 80 80 17 59</b><br>"
+        "<span style='color:#f7793b;font-size:11px;letter-spacing:1px;'>MAIL</span>&nbsp;&nbsp;contact@secureetech.com<br>"
+        "<span style='color:#f7793b;font-size:11px;letter-spacing:1px;'>WEB</span>&nbsp;&nbsp;&nbsp;secureetech.com</p></div>"
+        "<p style='margin:14px 0 0;font-size:11px;color:#8a80a8;'>SECUREETECH | Assistance informatique Premium</p>"
+        "</div></div></body></html>")
     nom_pdf = 'facture_' + str(numero).replace('/', '-') + '.pdf'
-    sujet = f"Votre facture {numero} - Secureetech"
+    sujet = f"Confirmation de votre souscription - Secureetech (facture {numero})"
 
     cle_resend = os.environ.get('MAIL_API_KEY', '')
     if cle_resend:
@@ -879,6 +1009,7 @@ def envoyer_facture(facture_id):
             'to': [email_client],
             'subject': sujet,
             'text': texte_email,
+            'html': html_email,
             'attachments': [{'filename': nom_pdf,
                              'content': base64.b64encode(pdf).decode('ascii')}],
         }).encode('utf-8')
@@ -901,6 +1032,7 @@ def envoyer_facture(facture_id):
         message['From'] = utilisateur
         message['To'] = email_client
         message.set_content(texte_email)
+        message.add_alternative(html_email, subtype='html')
         message.add_attachment(pdf, maintype='application', subtype='pdf', filename=nom_pdf)
         try:
             if port == 465:
@@ -917,7 +1049,7 @@ def envoyer_facture(facture_id):
 
     return (f"<div style='{style_page}'><h2>Facture envoyee</h2>"
             f"<p>La facture {numero} a ete envoyee a <b>{email_client}</b> :"
-            f" PDF joint + lien du contrat + cle OptiPC <code>{licence}</code>.</p>"
+            f" PDF joint + lien du contrat{(' + cle OptiPC ' + licence) if licence else ''}.</p>"
             "<p><a href='/factures'>Retour aux factures</a></p></div>"), 200
 
 
@@ -1014,8 +1146,12 @@ def api_contrat():
             return jsonify({'ok': False,
                             'erreur': f"Le numero de facture « {numero} » existe deja."}), 409
 
-    _ajouter_contact_ringover(nom, email,
-                              (donnees.get('telephone') or donnees.get('phone') or '').strip())
+    telephone_client = (donnees.get('telephone') or donnees.get('phone') or '').strip()
+    _ajouter_contact_ringover(nom, email, telephone_client)
+
+    facture_courante = database.obtenir_facture(facture_id) or {}
+    cle_licence = _licence_de_facture(facture_courante, telephone_client)
+    duree_licence = facture_courante.get('duree') or duree or 12
 
     lien_contrat = os.environ.get('SIGNNOW_SIGNING_LINK',
                                   'https://signnow.com/s/EJxThaKZ')
@@ -1025,8 +1161,8 @@ def api_contrat():
         'link': lien_contrat,
         'invoice_number': numero,
         'facture_url': url_for('api_facture_pdf', facture_id=facture_id, _external=True),
-        'licence_optipc': _cle_licence_optipc(cle, email),
-        'licence_duree_mois': 12,
+        'licence_optipc': cle_licence,
+        'licence_duree_mois': duree_licence,
     }), 200
 
 
