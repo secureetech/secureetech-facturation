@@ -170,12 +170,15 @@ def construire(facture, taux_tva=0.21):
     client = facture.get('client_nom') or ''
     adresse_client = facture.get('client_adresse') or ''
     email_client = facture.get('email') or ''
+    telephone_client = facture.get('client_telephone') or ''
 
     bloc_client = f"<b><font size=11>{client}</font></b>"
     if adresse_client:
         bloc_client += f"<br/><font color='#8a8590'>{adresse_client}</font>"
     if email_client:
         bloc_client += f"<br/><font color='#8a8590'>{email_client}</font>"
+    if telephone_client:
+        bloc_client += f"<br/><font color='#8a8590'>Tel : {telephone_client}</font>"
 
     parties = Table([[
         Paragraph("ÉMIS PAR", etiquette),
