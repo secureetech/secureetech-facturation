@@ -833,8 +833,8 @@ def envoyer_facture(facture_id):
         port = 465
     utilisateur = os.environ.get('ZOHO_SMTP_USER', '')
     mot_de_passe = os.environ.get('ZOHO_SMTP_PASSWORD', '')
-    if not (hote and utilisateur and mot_de_passe):
-        return f"<div style='{style_page}'><p>SMTP Zoho non configure (variables ZOHO_SMTP_HOST / USER / PASSWORD).</p><p><a href='/factures'>Retour aux factures</a></p></div>", 503
+    if not (os.environ.get('MAIL_API_KEY', '') or (hote and utilisateur and mot_de_passe)):
+        return f"<div style='{style_page}'><p>Aucun envoi configure (MAIL_API_KEY ou SMTP Zoho).</p><p><a href='/factures'>Retour aux factures</a></p></div>", 503
 
     numero = facture.get('numero_facture') or str(facture_id)
     client = facture.get('client_nom') or ''
@@ -852,13 +852,7 @@ def envoyer_facture(facture_id):
     except Exception as exc:
         return f"<div style='{style_page}'><p>Impossible de generer le PDF : {exc}</p><p><a href='/factures'>Retour aux factures</a></p></div>", 500
 
-    import smtplib
-    from email.message import EmailMessage
-    message = EmailMessage()
-    message['Subject'] = f"Votre facture {numero} - Secureetech"
-    message['From'] = utilisateur
-    message['To'] = email_client
-    message.set_content(
+    texte_email = (
         f"Bonjour {client},\n\n"
         f"Veuillez trouver ci-joint votre facture {numero}"
         f" ({formule_f} - {montant_f:.2f} EUR TTC).\n\n"
@@ -870,20 +864,54 @@ def envoyer_facture(facture_id):
         "L'equipe Secureetech\n"
         "https://secureetech.com")
     nom_pdf = 'facture_' + str(numero).replace('/', '-') + '.pdf'
-    message.add_attachment(pdf, maintype='application', subtype='pdf', filename=nom_pdf)
+    sujet = f"Votre facture {numero} - Secureetech"
 
-    try:
-        if port == 465:
-            with smtplib.SMTP_SSL(hote, port, timeout=25) as smtp:
-                smtp.login(utilisateur, mot_de_passe)
-                smtp.send_message(message)
-        else:
-            with smtplib.SMTP(hote, port, timeout=25) as smtp:
-                smtp.starttls()
-                smtp.login(utilisateur, mot_de_passe)
-                smtp.send_message(message)
-    except Exception as exc:
-        return f"<div style='{style_page}'><p>Echec de l'envoi : {exc}</p><p><a href='/factures'>Retour aux factures</a></p></div>", 500
+    cle_resend = os.environ.get('MAIL_API_KEY', '')
+    if cle_resend:
+        # Envoi via l'API HTTPS Resend (le SMTP sortant est bloque par l'hebergeur).
+        import json as json_mod
+        import base64
+        import urllib.request as urlreq
+        expediteur = os.environ.get('FACTURE_FROM_EMAIL', 'contact@secureetech.com')
+        corps_api = json_mod.dumps({
+            'from': f"Secureetech <{expediteur}>",
+            'to': [email_client],
+            'subject': sujet,
+            'text': texte_email,
+            'attachments': [{'filename': nom_pdf,
+                             'content': base64.b64encode(pdf).decode('ascii')}],
+        }).encode('utf-8')
+        requete = urlreq.Request(
+            'https://api.resend.com/emails',
+            data=corps_api,
+            headers={'Authorization': 'Bearer ' + cle_resend,
+                     'Content-Type': 'application/json'},
+            method='POST')
+        try:
+            urlreq.urlopen(requete, timeout=25)
+        except Exception as exc:
+            return f"<div style='{style_page}'><p>Echec de l'envoi (Resend) : {exc}</p><p><a href='/factures'>Retour aux factures</a></p></div>", 500
+    else:
+        import smtplib
+        from email.message import EmailMessage
+        message = EmailMessage()
+        message['Subject'] = sujet
+        message['From'] = utilisateur
+        message['To'] = email_client
+        message.set_content(texte_email)
+        message.add_attachment(pdf, maintype='application', subtype='pdf', filename=nom_pdf)
+        try:
+            if port == 465:
+                with smtplib.SMTP_SSL(hote, port, timeout=25) as smtp:
+                    smtp.login(utilisateur, mot_de_passe)
+                    smtp.send_message(message)
+            else:
+                with smtplib.SMTP(hote, port, timeout=25) as smtp:
+                    smtp.starttls()
+                    smtp.login(utilisateur, mot_de_passe)
+                    smtp.send_message(message)
+        except Exception as exc:
+            return f"<div style='{style_page}'><p>Echec de l'envoi : {exc}</p><p><a href='/factures'>Retour aux factures</a></p></div>", 500
 
     return (f"<div style='{style_page}'><h2>Facture envoyee</h2>"
             f"<p>La facture {numero} a ete envoyee a <b>{email_client}</b> :"
