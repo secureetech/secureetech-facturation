@@ -1020,6 +1020,8 @@ def envoyer_facture(facture_id):
                 " et le contrat signe.</p>"
                 "<p><a href='/factures'>Retour aux factures</a></p></div>"), 409
     pdf_contrat = _pdf_contrat_signe(_request_id_contrat(contrat_ligne))
+    lien_contrat = os.environ.get('SIGNNOW_SIGNING_LINK',
+                                  'https://signnow.com/s/EJxThaKZ')
     if pdf_contrat:
         ligne_contrat_txt = "Votre contrat signe est joint a cet email.\n\n"
         ligne_contrat_html = "Votre contrat signe est egalement joint a cet email."
