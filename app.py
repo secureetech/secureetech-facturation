@@ -20,6 +20,53 @@ import hashlib
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 
+# ---------------------------------------------------------------------------
+# Persistance : la base et les contrats signes vivent sur le volume Railway
+# (/data). Sans cela, chaque deploiement repartait du fichier commite dans
+# git et toutes les donnees creees entre-temps etaient perdues.
+# ---------------------------------------------------------------------------
+def _installer_persistance():
+    volume = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH', '')
+    if not volume or not os.path.isdir(volume):
+        return
+    import shutil
+    racine = os.path.dirname(os.path.abspath(__file__))
+
+    db_app = os.path.join(racine, 'facturation.db')
+    db_volume = os.path.join(volume, 'facturation.db')
+    try:
+        if (not os.path.exists(db_volume) and os.path.isfile(db_app)
+                and not os.path.islink(db_app)):
+            shutil.copy2(db_app, db_volume)
+            print(f"Persistance : base migree vers {db_volume}")
+        if os.path.isfile(db_app) and not os.path.islink(db_app):
+            os.remove(db_app)
+        if not os.path.exists(db_app):
+            os.symlink(db_volume, db_app)
+            print("Persistance : facturation.db relie au volume")
+    except Exception as exc:
+        print(f"Persistance base (non bloquant) : {exc}")
+
+    dossier_app = os.path.join(racine, 'contrats_signes')
+    dossier_volume = os.path.join(volume, 'contrats_signes')
+    try:
+        os.makedirs(dossier_volume, exist_ok=True)
+        if os.path.isdir(dossier_app) and not os.path.islink(dossier_app):
+            for nom_f in os.listdir(dossier_app):
+                destination = os.path.join(dossier_volume, nom_f)
+                if not os.path.exists(destination):
+                    shutil.copy2(os.path.join(dossier_app, nom_f), destination)
+            shutil.rmtree(dossier_app)
+        if not os.path.exists(dossier_app):
+            os.symlink(dossier_volume, dossier_app)
+            print("Persistance : contrats_signes relie au volume")
+    except Exception as exc:
+        print(f"Persistance contrats (non bloquant) : {exc}")
+
+
+_installer_persistance()
+
+
 # Préparation de la base au démarrage.
 # Encapsulé : un incident ici ne doit jamais empêcher le serveur de
 # démarrer, sinon la plateforme ne voit qu'un conteneur qui ne répond pas.
