@@ -6,6 +6,7 @@ import config
 import database
 import signnow
 import formules
+import facture_pdf
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.units import cm
 from reportlab.lib import colors
@@ -436,51 +437,18 @@ def api_ajouter_facture():
 @app.route('/api/factures/<int:facture_id>/pdf')
 @admin_required
 def api_facture_pdf(facture_id):
+    """PDF de la facture, aux couleurs SecureeTech."""
     facture = database.obtenir_facture(facture_id)
     if not facture:
         return jsonify({'error': 'Facture non trouvée'}), 404
-    
-    # Créer un PDF simple avec ReportLab
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
-    elements = []
-    
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=24,
-        textColor=colors.HexColor('#1a1a1a'),
-        spaceAfter=30
-    )
-    
-    elements.append(Paragraph(f"FACTURE {facture['numero_facture']}", title_style))
-    elements.append(Spacer(1, 0.2*inch))
-    
-    data = [
-        ['Client:', facture['client_nom']],
-        ['Date:', facture['date_facture']],
-        ['Email:', facture['email'] or 'N/A'],
-        ['Montant:', f"€{facture['montant']:.2f}"],
-        ['Description:', facture['description'] or 'N/A']
-    ]
-    
-    table = Table(data, colWidths=[1.5*inch, 4.5*inch])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-        ('GRID', (0, 0), (-1, -1), 1, colors.grey)
-    ]))
-    
-    elements.append(table)
-    doc.build(elements)
-    buffer.seek(0)
-    
-    return buffer.getvalue(), 200, {'Content-Disposition': f'attachment; filename=facture_{facture_id}.pdf', 'Content-Type': 'application/pdf'}
+
+    contenu = facture_pdf.construire(facture, taux_tva=formules.TVA)
+    numero = (facture.get('numero_facture') or str(facture_id)).replace('/', '-')
+
+    return contenu, 200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': f'inline; filename=facture_{numero}.pdf',
+    }
 
 
 # ============ CONTRATS ET FACTURES ============
