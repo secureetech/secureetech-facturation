@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 import config
 import database
+import signnow
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.units import cm
 from reportlab.lib import colors
@@ -178,6 +179,7 @@ def index():
                          par_source=par_source,
                          contrats=database.compter_contrats(),
                          nb_factures_ext=database.compter_factures(),
+                         signnow_pret=signnow.configure(),
                          clients_top=clients[:10])
 
 # ============ PAGE CLIENTS (AGRÉGÉ) ============
@@ -384,6 +386,18 @@ def contrat_pdf(request_id):
         return send_file(chemin, mimetype='application/pdf',
                          as_attachment=True, download_name=nom_fichier)
 
+    # SignNow par API : le PDF est récupéré à la demande
+    if request_id.startswith('signnow_api:'):
+        document_id = request_id.split(':', 1)[1]
+        try:
+            contenu = signnow.telecharger(document_id)
+        except signnow.SignNowIndisponible as erreur:
+            return str(erreur), 503
+        return contenu, 200, {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': f'attachment; filename=contrat_{document_id[:10]}.pdf',
+        }
+
     cle = os.environ.get('DROPBOX_SIGN_API_KEY', '')
     if not cle:
         return "Clé Dropbox Sign non configurée sur le serveur.", 503
@@ -471,6 +485,27 @@ def facture_client(client_nom):
         'Content-Type': 'application/pdf',
         'Content-Disposition': f'attachment; filename=recapitulatif_{nom_fichier}.pdf',
     }
+
+
+
+@app.route('/sync/signnow', methods=['GET', 'POST'])
+@admin_required
+def sync_signnow():
+    """Récupère les nouveaux contrats depuis SignNow."""
+    if not signnow.configure():
+        return render_template('sync.html', erreur=(
+            "Identifiants SignNow absents du serveur. Vérifiez les variables "
+            "SIGNNOW_CLIENT_ID, SIGNNOW_CLIENT_SECRET, "
+            "SIGNNOW_INITIAL_ACCESS_TOKEN et SIGNNOW_INITIAL_REFRESH_TOKEN."))
+
+    try:
+        resultat = signnow.synchroniser()
+    except signnow.SignNowIndisponible as erreur:
+        return render_template('sync.html', erreur=str(erreur))
+    except Exception as erreur:  # pragma: no cover
+        return render_template('sync.html', erreur=f"Erreur inattendue : {erreur}")
+
+    return render_template('sync.html', resultat=resultat)
 
 
 # ============ ERROR HANDLERS ============

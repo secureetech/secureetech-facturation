@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Synchronisation SignNow - SecureeTech{% endblock %}
+{% block content %}
+<h2>Synchronisation SignNow</h2>
+<p class="sous-titre">Récupère les contrats créés depuis SignNow et les rattache aux clients.</p>
+
+{% if erreur %}
+<div class="carte"><div class="carte-corps">
+  <div style="background:rgba(204,24,24,.08); color:#cc1818; padding:.8rem 1rem; border-radius:7px;">
+    {{ erreur }}
+  </div>
+</div></div>
+{% elif resultat %}
+<div class="stats">
+  <div class="stat"><div class="libelle">Documents examinés</div><div class="valeur">{{ resultat.examines }}</div></div>
+  <div class="stat"><div class="libelle">Contrats retenus</div><div class="valeur">{{ resultat.retenus }}</div></div>
+  <div class="stat"><div class="libelle">Essais écartés</div><div class="valeur">{{ resultat.ecartes_essais }}</div></div>
+  <div class="stat"><div class="libelle">Déjà archivés</div><div class="valeur">{{ resultat.deja_archives }}</div></div>
+</div>
+<p class="sous-titre">Les contrats Dropbox Sign et les 77 contrats archivés ne sont pas touchés.</p>
+{% endif %}
+
+<div style="margin-top:1.5rem; display:flex; gap:.6rem;">
+  <a class="bouton" href="{{ url_for('sync_signnow') }}">Relancer la synchronisation</a>
+  <a class="bouton secondaire" href="{{ url_for('index') }}">Retour</a>
+</div>
+{% endblock %}

@@ -12,6 +12,11 @@
   <div class="stat"><div class="libelle">Factures</div><div class="valeur">{{ nb_factures_ext }}</div></div>
 </div>
 
+<div style="margin:1.25rem 0;">
+  <a class="bouton {{ '' if signnow_pret else 'secondaire' }}" href="{{ url_for('sync_signnow') }}">Synchroniser les contrats SignNow</a>
+  {% if not signnow_pret %}<span class="discret" style="margin-left:.6rem;">Identifiants SignNow non détectés</span>{% endif %}
+</div>
+
 <h3>Encaissé par plateforme</h3>
 <div class="carte">
   <table>
