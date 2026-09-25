@@ -890,6 +890,87 @@ def _filtre_licence_optipc(facture):
         return ''
 
 
+def _paiement_recu(email_client, nom_client):
+    """Vrai si au moins un paiement enregistre correspond au client."""
+    try:
+        paiements_tous = database.obtenir_tous_paiements()
+    except Exception as exc:
+        print(f"Verification paiement : {exc}")
+        return False
+    email_bas = (email_client or '').strip().lower()
+    nom_bas = (nom_client or '').strip().lower()
+    for p in paiements_tous:
+        if email_bas and (p.get('email') or '').strip().lower() == email_bas:
+            return True
+        if nom_bas and (p.get('client_nom') or '').strip().lower() == nom_bas:
+            return True
+    return False
+
+
+def _contrat_signe_du_client(email_client, nom_client):
+    """Ligne du contrat signe le plus recent du client, sinon None."""
+    try:
+        connexion = database.get_connection()
+        curseur = connexion.execute("SELECT * FROM contrats")
+        colonnes = [d[0] for d in curseur.description]
+        lignes = [dict(zip(colonnes, l)) for l in curseur.fetchall()]
+        connexion.close()
+    except Exception as exc:
+        print(f"Lecture contrats : {exc}")
+        return None
+    email_bas = (email_client or '').strip().lower()
+    nom_bas = (nom_client or '').strip().lower()
+    candidats = []
+    for ligne in lignes:
+        valeurs = {str(k).lower(): ('' if val is None else str(val))
+                   for k, val in ligne.items()}
+        statut = ''
+        for cle_statut in ('statut', 'status', 'etat', 'state'):
+            if cle_statut in valeurs:
+                statut = valeurs[cle_statut].lower()
+                break
+        if statut and 'sign' not in statut:
+            continue
+        texte = ' '.join(valeurs.values()).lower()
+        if (email_bas and email_bas in texte) or (nom_bas and nom_bas in texte):
+            candidats.append(ligne)
+    return candidats[-1] if candidats else None
+
+
+def _request_id_contrat(ligne):
+    """Retrouve l'identifiant (40 hex) du contrat dans la ligne."""
+    for valeur in (ligne or {}).values():
+        s = str(valeur or '').strip()
+        if len(s) == 40 and all(c in '0123456789abcdef' for c in s.lower()):
+            return s
+    return ''
+
+
+def _pdf_contrat_signe(request_id):
+    """Bytes du PDF du contrat signe (fichier local, sinon SignNow)."""
+    if not request_id:
+        return None
+    dossiers = ('contrats_signes',
+                os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             'contrats_signes'))
+    for dossier in dossiers:
+        try:
+            if os.path.isdir(dossier):
+                for nom_fichier in os.listdir(dossier):
+                    if request_id in nom_fichier and nom_fichier.lower().endswith('.pdf'):
+                        with open(os.path.join(dossier, nom_fichier), 'rb') as flux:
+                            return flux.read()
+        except Exception:
+            continue
+    try:
+        contenu = signnow.telecharger(request_id)
+        if contenu:
+            return contenu
+    except Exception as exc:
+        print(f"Telechargement contrat : {exc}")
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Envoi d'une facture par email (SMTP Zoho) : PDF joint + lien du contrat
 # + cle de licence OptiPC. Bouton "Envoyer" de la page Factures.
@@ -923,6 +1004,29 @@ def envoyer_facture(facture_id):
     except (TypeError, ValueError):
         montant_f = 0.0
     licence = _licence_de_facture(facture)
+
+    # Controle avant envoi : paiement recu ET contrat signe obligatoires.
+    if not _paiement_recu(email_client, client):
+        return (f"<div style='{style_page}'><h2>Envoi bloque</h2>"
+                f"<p>Aucun paiement enregistre pour <b>{client}</b> ({email_client}).</p>"
+                "<p>L'email part uniquement quand le paiement est recu"
+                " et le contrat signe.</p>"
+                "<p><a href='/factures'>Retour aux factures</a></p></div>"), 409
+    contrat_ligne = _contrat_signe_du_client(email_client, client)
+    if contrat_ligne is None:
+        return (f"<div style='{style_page}'><h2>Envoi bloque</h2>"
+                f"<p>Aucun contrat signe trouve pour <b>{client}</b> ({email_client}).</p>"
+                "<p>L'email part uniquement quand le paiement est recu"
+                " et le contrat signe.</p>"
+                "<p><a href='/factures'>Retour aux factures</a></p></div>"), 409
+    pdf_contrat = _pdf_contrat_signe(_request_id_contrat(contrat_ligne))
+    if pdf_contrat:
+        ligne_contrat_txt = "Votre contrat signe est joint a cet email.\n\n"
+        ligne_contrat_html = "Votre contrat signe est egalement joint a cet email."
+    else:
+        ligne_contrat_txt = f"Votre contrat a signer :\n{lien_contrat}\n\n"
+        ligne_contrat_html = (f"Votre contrat a signer : <a href='{lien_contrat}'"
+                              f" style='color:#7b2ff7;'>{lien_contrat}</a>")
     lien_contrat = os.environ.get('SIGNNOW_SIGNING_LINK',
                                   'https://signnow.com/s/EJxThaKZ')
 
@@ -938,7 +1042,7 @@ def envoyer_facture(facture_id):
         f"Nous vous confirmons votre souscription a un contrat de {duree_txt}"
         f" pour le service {formule_f} avec SecureeTech.\n"
         f"Vous trouverez ci-joint votre facture {numero} ({montant_f:.2f} EUR TTC).\n\n"
-        f"Votre contrat a signer :\n{lien_contrat}\n\n"
+        + ligne_contrat_txt
         + bloc_licence_txt +
         "Assistance & entretien : 09 80 80 17 59"
         " (du lundi au vendredi, de 10h00 a 17h00)\n\n"
@@ -979,7 +1083,7 @@ def envoyer_facture(facture_id):
         f"<div style='background:#ffffff;border:1px solid #e6e0f5;border-radius:10px;padding:16px 18px;margin:14px 0;'>"
         f"<p style='margin:0;font-weight:bold;'>Votre facture et votre contrat</p>"
         f"<p style='margin:8px 0 0;'>Votre facture <b>{numero}</b> ({montant_f:.2f} EUR TTC) est jointe a cet email.<br>"
-        f"Votre contrat a signer : <a href='{lien_contrat}' style='color:#7b2ff7;'>{lien_contrat}</a></p></div>"
+        + ligne_contrat_html + "</p></div>"
         "<div style='background:#ede9fb;border-radius:10px;padding:16px 18px;margin:14px 0;'>"
         "<p style='margin:0;font-weight:bold;'>Assistance &amp; entretien</p>"
         "<p style='margin:8px 0 0;'>Pour toute question, demande d'entretien ou besoin d'assistance,"
@@ -1011,14 +1115,19 @@ def envoyer_facture(facture_id):
         import base64
         import urllib.request as urlreq
         expediteur = os.environ.get('FACTURE_FROM_EMAIL', 'contact@secureetech.com')
+        pieces_jointes = [{'filename': nom_pdf,
+                           'content': base64.b64encode(pdf).decode('ascii')}]
+        if pdf_contrat:
+            pieces_jointes.append({
+                'filename': ('contrat_signe_' + str(numero) + '.pdf').replace('/', '-'),
+                'content': base64.b64encode(pdf_contrat).decode('ascii')})
         corps_api = json_mod.dumps({
             'from': f"Secureetech <{expediteur}>",
             'to': [email_client],
             'subject': sujet,
             'text': texte_email,
             'html': html_email,
-            'attachments': [{'filename': nom_pdf,
-                             'content': base64.b64encode(pdf).decode('ascii')}],
+            'attachments': pieces_jointes,
         }).encode('utf-8')
         requete = urlreq.Request(
             'https://api.resend.com/emails',
@@ -1041,6 +1150,9 @@ def envoyer_facture(facture_id):
         message.set_content(texte_email)
         message.add_alternative(html_email, subtype='html')
         message.add_attachment(pdf, maintype='application', subtype='pdf', filename=nom_pdf)
+        if pdf_contrat:
+            message.add_attachment(pdf_contrat, maintype='application',
+                                   subtype='pdf', filename='contrat_signe.pdf')
         try:
             if port == 465:
                 with smtplib.SMTP_SSL(hote, port, timeout=25) as smtp:
@@ -1056,7 +1168,8 @@ def envoyer_facture(facture_id):
 
     return (f"<div style='{style_page}'><h2>Facture envoyee</h2>"
             f"<p>La facture {numero} a ete envoyee a <b>{email_client}</b> :"
-            f" PDF joint + lien du contrat{(' + cle OptiPC ' + licence) if licence else ''}.</p>"
+            f" facture PDF{' + contrat signe joint' if pdf_contrat else ''}"
+            f"{(' + cle OptiPC ' + licence) if licence else ''}.</p>"
             "<p><a href='/factures'>Retour aux factures</a></p></div>"), 200
 
 
