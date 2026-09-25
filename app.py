@@ -573,6 +573,20 @@ def paiements():
                          max_amount=max_amount)
 
 # ============ PAGE FACTURES ============
+@app.route('/factures/<int:facture_id>/supprimer', methods=['POST'])
+@admin_required
+def supprimer_facture(facture_id):
+    """Supprime definitivement une facture (menage des tests)."""
+    try:
+        connexion = database.get_connection()
+        connexion.execute("DELETE FROM factures WHERE id = ?", (facture_id,))
+        connexion.commit()
+        connexion.close()
+    except Exception as exc:
+        print(f"Suppression facture : {exc}")
+    return redirect(url_for('factures'))
+
+
 @app.route('/factures', methods=['GET', 'POST'])
 @admin_required
 def factures():
