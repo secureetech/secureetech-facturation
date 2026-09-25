@@ -1,75 +1,96 @@
 {% extends "base.html" %}
-
-{% block title %}Factures - Secureetech Facturation{% endblock %}
-
+{% block title %}Factures - SecureeTech{% endblock %}
 {% block content %}
-<h2>📄 Gestion des Factures</h2>
+<h2>Factures</h2>
+<p class="sous-titre">Génération à partir du catalogue SecureeTech. TVA de {{ taux_tva }} % appliquée automatiquement.</p>
 
-<div style="background: #f9f9f9; padding: 1.5rem; border-radius: 10px; margin: 1.5rem 0;">
-    <h3>Créer une facture</h3>
-    <form id="form-facture" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-        <input type="text" id="numero_facture" name="numero_facture" placeholder="Numéro de facture (auto-généré si vide)">
-        <input type="date" id="date_facture" name="date_facture" required>
-        <input type="text" id="client_nom" name="client_nom" placeholder="Nom du client" required>
-        <input type="email" id="email" name="email" placeholder="Email (optionnel)">
-        <input type="number" id="montant" name="montant" placeholder="Montant" step="0.01" required>
-        <textarea id="description" name="description" placeholder="Description (optionnel)" style="grid-column: 1 / -1;"></textarea>
-        <button type="submit" style="grid-column: 1 / -1;">Créer facture</button>
-    </form>
+{% if message %}
+<div class="carte"><div class="carte-corps">
+  <div style="background:rgba(31,157,85,.1); color:var(--vert); padding:.8rem 1rem; border-radius:7px;">{{ message }}</div>
+</div></div>
+{% endif %}
+{% if erreur %}
+<div class="carte"><div class="carte-corps">
+  <div style="background:rgba(204,24,24,.08); color:#cc1818; padding:.8rem 1rem; border-radius:7px;">{{ erreur }}</div>
+</div></div>
+{% endif %}
+
+<form method="post" class="filtres" style="margin-top:1.25rem;">
+  <h3 style="margin-top:0;">Nouvelle facture</h3>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:.9rem;">
+    <div><label>Nom du client</label><input type="text" name="client_nom" required placeholder="Nom et prénom"></div>
+    <div><label>Email</label><input type="email" name="email" placeholder="Facultatif"></div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:.9rem; margin-top:.9rem;">
+    <div>
+      <label>Formule</label>
+      <select name="formule" id="formule" required>
+        <option value="">Choisir une formule</option>
+        {% for e in catalogue %}
+          <option value="{{ e.cle }}" data-ht="{{ e.prix_ht }}">{{ e.libelle }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><label>Prix HT négocié (€)</label><input type="number" name="montant_ht" id="montant_ht" step="0.01" placeholder="Grille"></div>
+    <div><label>Date</label><input type="date" name="date_facture" value="{{ aujourdhui }}"></div>
+    <div><label>Numéro</label><input type="text" name="numero_facture" placeholder="Auto"></div>
+  </div>
+
+  <div id="apercu" class="discret" style="margin-top:.9rem;">Sélectionnez une formule pour voir le détail HT, TVA et TTC.</div>
+
+  <button type="submit" style="margin-top:1rem;">Créer la facture</button>
+</form>
+
+<h3>Factures émises</h3>
+<div class="carte">
+  {% if factures %}
+  <table>
+    <thead><tr><th>Numéro</th><th>Date</th><th>Client</th><th>Formule</th>
+      <th class="num">HT</th><th class="num">TVA</th><th class="num">TTC</th><th></th></tr></thead>
+    <tbody>
+      {% for f in factures %}
+      <tr>
+        <td>{{ f.numero_facture }}</td>
+        <td class="discret">{{ f.date_facture }}</td>
+        <td>{{ f.client_nom }}{% if f.email %}<br><span class="discret">{{ f.email }}</span>{% endif %}</td>
+        <td>{% if f.formule %}<span class="tag">{{ f.formule }}{% if f.duree %} · {{ f.duree }} mois{% endif %}</span>{% endif %}</td>
+        <td class="num">{{ "%.2f"|format(f.montant_ht or 0) }} €</td>
+        <td class="num">{{ "%.2f"|format(f.tva or 0) }} €</td>
+        <td class="num">{{ "%.2f"|format(f.montant or 0) }} €</td>
+        <td><a href="{{ url_for('api_facture_pdf', facture_id=f.id) }}">PDF</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="vide">Aucune facture émise depuis l'application.<br>
+    <span class="discret">Les factures Stripe existantes apparaissent sur la fiche de chaque client.</span></div>
+  {% endif %}
 </div>
 
-<h3>Toutes les factures</h3>
-<table>
-    <thead>
-        <tr>
-            <th>Numéro</th>
-            <th>Date</th>
-            <th>Client</th>
-            <th>Montant</th>
-            <th>Statut</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for facture in factures %}
-        <tr>
-            <td><strong>{{ facture.numero_facture }}</strong></td>
-            <td>{{ facture.date_facture }}</td>
-            <td>{{ facture.client_nom }}</td>
-            <td>${{ "%.2f"|format(facture.montant) }}</td>
-            <td>{{ facture.statut }}</td>
-            <td>
-                <a href="{{ url_for('api_facture_pdf', facture_id=facture.id) }}" style="padding: 0.5rem 1rem; background: #28a745; color: white; text-decoration: none; border-radius: 3px; font-size: 0.9rem;">📥 PDF</a>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-
 <script>
-document.getElementById('form-facture').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const data = {
-        numero_facture: document.getElementById('numero_facture').value || '',
-        date_facture: document.getElementById('date_facture').value,
-        client_nom: document.getElementById('client_nom').value,
-        email: document.getElementById('email').value,
-        montant: parseFloat(document.getElementById('montant').value),
-        description: document.getElementById('description').value
-    };
-    
-    const response = await fetch('/api/factures/ajouter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-    });
-    
-    if (response.ok) {
-        alert('Facture créée!');
-        location.reload();
-    } else {
-        alert('Erreur lors de la création de la facture');
+  (function () {
+    var taux = {{ taux_tva }} / 100;
+    var select = document.getElementById('formule');
+    var libre = document.getElementById('montant_ht');
+    var apercu = document.getElementById('apercu');
+
+    function calculer() {
+      var option = select.options[select.selectedIndex];
+      var ht = parseFloat(libre.value) || (option ? parseFloat(option.dataset.ht) : NaN);
+      if (isNaN(ht)) {
+        apercu.textContent = 'Sélectionnez une formule pour voir le détail HT, TVA et TTC.';
+        return;
+      }
+      var tva = Math.round(ht * taux * 100) / 100;
+      apercu.innerHTML = '<strong>' + ht.toFixed(2) + ' € HT</strong> + ' +
+        tva.toFixed(2) + ' € de TVA ({{ taux_tva }} %) = <strong>' +
+        (ht + tva).toFixed(2) + ' € TTC</strong>';
     }
-});
+
+    select.addEventListener('change', calculer);
+    libre.addEventListener('input', calculer);
+  })();
 </script>
 {% endblock %}

@@ -5,6 +5,7 @@ import os
 import config
 import database
 import signnow
+import formules
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.units import cm
 from reportlab.lib import colors
@@ -22,6 +23,7 @@ app.secret_key = config.SECRET_KEY
 try:
     database.init_db()
     database.init_contrats()
+    database.init_factures_formules()
     database.regenerate_clients_summary()
 except Exception as erreur_demarrage:  # pragma: no cover
     import traceback
@@ -337,11 +339,58 @@ def paiements():
                          max_amount=max_amount)
 
 # ============ PAGE FACTURES ============
-@app.route('/factures')
+@app.route('/factures', methods=['GET', 'POST'])
 @admin_required
 def factures():
-    factures = database.obtenir_toutes_factures()
-    return render_template('factures.html', factures=factures)
+    """Génération de factures à partir du catalogue de formules."""
+    message = None
+    erreur = None
+
+    if request.method == 'POST':
+        client_nom = (request.form.get('client_nom') or '').strip()
+        email = (request.form.get('email') or '').strip()
+        choix = request.form.get('formule') or ''
+        prix_libre = (request.form.get('montant_ht') or '').strip()
+        date_facture = request.form.get('date_facture') or datetime.now().strftime('%Y-%m-%d')
+
+        if not client_nom:
+            erreur = "Le nom du client est obligatoire."
+        elif not choix:
+            erreur = "Sélectionnez une formule."
+        else:
+            nom_formule, _, duree_txt = choix.partition('|')
+            duree = int(duree_txt or 0)
+            calcul = formules.montants(
+                nom_formule, duree,
+                montant_ht=float(prix_libre) if prix_libre else None)
+
+            if not calcul:
+                erreur = "Cette combinaison formule / durée n'existe pas."
+            else:
+                numero = (request.form.get('numero_facture') or '').strip() or \
+                    f"SECT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+                database.ajouter_facture(
+                    numero_facture=numero,
+                    date_facture=date_facture,
+                    client_nom=client_nom,
+                    montant=calcul['ttc'],
+                    email=email,
+                    description=formules.description(nom_formule, duree),
+                    formule=nom_formule,
+                    duree=duree,
+                    montant_ht=calcul['ht'],
+                    tva=calcul['tva'])
+                message = (f"Facture {numero} créée : {formules.description(nom_formule, duree)} — "
+                           f"{calcul['ht']:.2f} € HT + {calcul['tva']:.2f} € de TVA "
+                           f"= {calcul['ttc']:.2f} € TTC.")
+
+    return render_template('factures.html',
+                           factures=database.obtenir_toutes_factures(),
+                           catalogue=formules.catalogue(),
+                           taux_tva=int(formules.TVA * 100),
+                           aujourdhui=datetime.now().strftime('%Y-%m-%d'),
+                           message=message,
+                           erreur=erreur)
 
 # ============ API ENDPOINTS ============
 @app.route('/api/factures/ajouter', methods=['POST'])

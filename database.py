@@ -34,7 +34,7 @@ def init_db():
     if 'entite' not in colonnes:
         cursor.execute("ALTER TABLE paiements ADD COLUMN entite TEXT DEFAULT ''")
 
-    # Table des factures
+    # Table des factures créées dans l'application
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS factures (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -291,16 +291,34 @@ def filtrer_paiements(date_from=None, date_to=None, source=None, min_amount=None
 
 # ============ FACTURES ============
 
-def ajouter_facture(numero_facture, date_facture, client_nom, montant, email='', description=''):
-    """Ajouter une facture"""
+def init_factures_formules():
+    """Ajoute les colonnes de formule sur une base existante."""
     conn = get_connection()
     cursor = conn.cursor()
-    
+    colonnes = [c[1] for c in cursor.execute('PRAGMA table_info(factures)')]
+    for nom, definition in [('formule', "TEXT DEFAULT ''"),
+                            ('duree', 'INTEGER DEFAULT 0'),
+                            ('montant_ht', 'REAL DEFAULT 0'),
+                            ('tva', 'REAL DEFAULT 0')]:
+        if nom not in colonnes:
+            cursor.execute(f'ALTER TABLE factures ADD COLUMN {nom} {definition}')
+    conn.commit()
+    conn.close()
+
+
+def ajouter_facture(numero_facture, date_facture, client_nom, montant, email='', description='',
+                    formule='', duree=0, montant_ht=0, tva=0):
+    """Ajouter une facture. `montant` est le TTC."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
     try:
         cursor.execute('''
-        INSERT INTO factures (numero_facture, date_facture, client_nom, montant, email, description)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ''', (numero_facture, date_facture, client_nom, montant, email, description))
+        INSERT INTO factures (numero_facture, date_facture, client_nom, montant, email,
+                              description, formule, duree, montant_ht, tva)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (numero_facture, date_facture, client_nom, montant, email, description,
+              formule, duree, montant_ht, tva))
         
         conn.commit()
         return cursor.lastrowid
