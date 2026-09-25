@@ -67,7 +67,7 @@
             <a href="{{ url_for('api_facture_pdf', facture_id=f.id) }}">PDF</a>
             {% if f.email %}
             <form method="post" action="{{ url_for('envoyer_facture', facture_id=f.id) }}" style="display:inline;margin-left:8px" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Envoi...'">
-              <button type="submit" style="cursor:pointer">\ud83d\udce7 Envoyer</button>
+              <button type="submit" style="cursor:pointer">Envoyer</button>
             </form>
             {% endif %}
           </td>
