@@ -184,7 +184,8 @@ def _ajouter_contact_ringover(nom, email, telephone=''):
             'https://public-api.ringover.com/v2/contacts',
             data=corps,
             headers={'Authorization': cle_api,
-                     'Content-Type': 'application/json'},
+                     'Content-Type': 'application/json',
+                     'User-Agent': 'Secureetech-Facturation/1.0'},
             method='POST')
         urlreq.urlopen(requete, timeout=10)
         print(f"Ringover : contact ajoute ({email or telephone})")
@@ -885,7 +886,8 @@ def envoyer_facture(facture_id):
             'https://api.resend.com/emails',
             data=corps_api,
             headers={'Authorization': 'Bearer ' + cle_resend,
-                     'Content-Type': 'application/json'},
+                     'Content-Type': 'application/json',
+                     'User-Agent': 'Secureetech-Facturation/1.0'},
             method='POST')
         try:
             urlreq.urlopen(requete, timeout=25)
