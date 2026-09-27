@@ -246,6 +246,8 @@ MAPPING_MODELE = {
     # et ils se remplissent au moment de la signature -> on ne les prefixe pas.
     'Date and Time 1': '',
     'Date and Time 2': '',
+    'Date and Time 3': '',
+    'Full Name 3': 'client_nom',
 }
 
 # Repli par mot-clé, pour les champs nommés lisiblement (et si le modèle
