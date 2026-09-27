@@ -572,6 +572,49 @@ def paiements():
                          min_amount=min_amount,
                          max_amount=max_amount)
 
+# ============ NETTOYAGE DES PAIEMENTS STRIPE ============
+@app.route('/paiements/nettoyage-stripe')
+@admin_required
+def nettoyage_stripe_page():
+    """Vérification progressive des paiements Stripe importés (voir
+    nettoyage_stripe.py). GET simple = état ; ?verifier=1 = traite un lot
+    puis la page se rafraîchit toute seule jusqu'à la fin."""
+    import nettoyage_stripe as _nettoyage
+    etat = _nettoyage.etat()
+    erreur = None
+    en_cours = request.args.get('verifier') == '1' and etat['restants'] > 0
+    if en_cours:
+        traite = _nettoyage.verifier_un_lot()
+        if traite == -1:
+            erreur = ("Aucune clé Stripe configurée. Ajoute STRIPE_API_KEY "
+                      "(compte 1) et STRIPE_API_KEY_SECONDARY (compte 2) dans "
+                      "les variables Railway — des clés restreintes en lecture "
+                      "seule suffisent — puis relance.")
+            en_cours = False
+        etat = _nettoyage.etat()
+        en_cours = en_cours and etat['restants'] > 0
+    return render_template('nettoyage_stripe.html', etat=etat,
+                           en_cours=en_cours, erreur=erreur, resultat=None)
+
+
+@app.route('/paiements/nettoyage-stripe/lancer', methods=['POST'])
+@admin_required
+def nettoyage_stripe_lancer():
+    import nettoyage_stripe as _nettoyage
+    _nettoyage.demarrer()
+    return redirect(url_for('nettoyage_stripe_page', verifier=1))
+
+
+@app.route('/paiements/nettoyage-stripe/appliquer', methods=['POST'])
+@admin_required
+def nettoyage_stripe_appliquer():
+    import nettoyage_stripe as _nettoyage
+    if _nettoyage.etat()['restants'] > 0:
+        return redirect(url_for('nettoyage_stripe_page', verifier=1))
+    resultat = _nettoyage.appliquer()
+    return render_template('nettoyage_stripe.html', etat=_nettoyage.etat(),
+                           en_cours=False, erreur=None, resultat=resultat)
+
 # ============ PAGE FACTURES ============
 @app.route('/factures/<int:facture_id>/supprimer', methods=['POST'])
 @admin_required
