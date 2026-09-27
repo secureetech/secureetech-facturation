@@ -1060,21 +1060,40 @@ def _paiement_recu(email_client, nom_client):
 
 
 def _contrat_signe_du_client(email_client, nom_client):
-    """Contrat signe le plus recent du client, sinon None."""
+    """Contrat CLIENT signe le plus recent du client, sinon None.
+
+    obtenir_contrats_client trie du plus recent au plus ancien.
+    Priorite au signataire dont l'email correspond exactement ; les
+    contrats d'affiliation / partenariat (contrats vendeurs) ne sont
+    jamais joints a un email client.
+    """
     try:
         lignes = database.obtenir_contrats_client(nom_client or '', email_client or '')
     except Exception as exc:
         print(f"Lecture contrats : {exc}")
         return None
-    signes = []
+    email_bas = (email_client or '').strip().lower()
+    candidats = []
     for ligne in (lignes or []):
         try:
-            statut = str(ligne.get('statut') or ligne.get('status') or '').lower()
+            statut = str(ligne.get('statut') or '').lower()
+            titre = str(ligne.get('titre') or '').lower()
+            email_sig = str(ligne.get('signataire_email') or '').strip().lower()
         except Exception:
-            statut = ''
-        if not statut or 'sign' in statut:
-            signes.append(ligne)
-    return signes[-1] if signes else None
+            statut, titre, email_sig = '', '', ''
+        if statut and 'sign' not in statut:
+            continue
+        if ('affiliation' in titre or 'partenariat' in titre
+                or 'partenaire' in titre):
+            continue
+        candidats.append((bool(email_bas) and email_sig == email_bas, ligne))
+    if not candidats:
+        return None
+    par_email = [l for exact, l in candidats if exact]
+    choisi = par_email[0] if par_email else candidats[0][1]
+    print(f"Contrat joint : {choisi.get('titre')}"
+          f" ({str(choisi.get('signature_request_id') or '')[:12]}...)")
+    return choisi
 
 
 def _request_id_contrat(ligne):
