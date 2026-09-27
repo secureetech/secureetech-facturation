@@ -1484,6 +1484,14 @@ def api_contrat():
 
     if not nom:
         return jsonify({'ok': False, 'erreur': 'Nom du client manquant.'}), 400
+    if not prenom or not nom_famille:
+        return jsonify({'ok': False,
+                        'erreur': "Nom ET prenom du client requis."}), 400
+    telephone_requis = (donnees.get('telephone') or donnees.get('phone') or '').strip()
+    if not telephone_requis:
+        return jsonify({'ok': False,
+                        'erreur': "Telephone du client requis"
+                                  " (il figure sur la facture)."}), 400
     if not formule:
         return jsonify({'ok': False,
                         'erreur': "Formule manquante (montant ambigu ou hors grille) :"
