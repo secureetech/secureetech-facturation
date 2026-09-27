@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Nettoyage des paiements Stripe - SecureeTech{% endblock %}
+{% block content %}
+{% if en_cours %}<meta http-equiv="refresh" content="1">{% endif %}
+
+<h2>Nettoyage des paiements Stripe</h2>
+<p class="sous-titre">
+  Revérifie chaque paiement Stripe importé auprès de Stripe (lecture seule) et
+  écarte les tentatives jamais encaissées : cartes refusées, 3D&nbsp;Secure
+  abandonnés, autorisations non débitées, remboursements. Les paiements réels,
+  les paiements en plusieurs fois et les autres plateformes (Bridge, GoCardless,
+  Mollie) ne sont pas touchés.
+</p>
+
+{% if erreur %}
+<div class="carte"><div class="carte-corps">
+  <div style="background:rgba(204,24,24,.08); color:#cc1818; padding:.8rem 1rem; border-radius:7px;">
+    {{ erreur }}
+  </div>
+</div></div>
+{% endif %}
+
+{% if resultat %}
+<div style="background:rgba(30,142,90,.1); color:#1e7e4f; padding:.9rem 1.1rem; border-radius:7px; margin:1rem 0; font-weight:600;">
+  ✓ Nettoyage appliqué : {{ resultat.supprimees }} fausse(s) ligne(s) supprimée(s),
+  {{ resultat.ajustees }} montant(s) ajusté(s) (remboursements partiels).
+  Les totaux et les fiches clients sont maintenant les vrais chiffres.
+</div>
+{% endif %}
+
+<div class="stats">
+  <div class="stat"><div class="libelle">Lignes Stripe</div><div class="valeur">{{ etat.total_stripe }}</div></div>
+  <div class="stat"><div class="libelle">Vérifiées</div><div class="valeur">{{ etat.verifies }}</div></div>
+  <div class="stat"><div class="libelle">Restantes</div><div class="valeur">{{ etat.restants }}</div></div>
+  {% if etat.verifies %}
+  <div class="stat"><div class="libelle">À supprimer</div><div class="valeur">{{ etat.lignes_a_supprimer }}</div></div>
+  <div class="stat"><div class="libelle">Encaissé affiché</div><div class="valeur">{{ "%.2f"|format(etat.total_avant) }} €</div></div>
+  <div class="stat"><div class="libelle">Encaissé réel estimé</div><div class="valeur">{{ "%.2f"|format(etat.total_apres) }} €</div></div>
+  {% endif %}
+</div>
+
+{% if en_cours %}
+<p class="sous-titre" style="margin-top:1rem;">
+  Vérification en cours auprès de Stripe… la page se met à jour toute seule,
+  laisse-la ouverte ({{ etat.verifies }}/{{ etat.total_stripe }}).
+</p>
+{% endif %}
+
+{% if etat.verifies and etat.verdicts %}
+<div class="carte" style="margin-top:1.2rem;"><div class="carte-corps">
+  <table>
+    <thead><tr><th>Verdict</th><th>Lignes</th><th>Montant concerné</th></tr></thead>
+    <tbody>
+      {% for code, v in etat.verdicts.items() %}
+      <tr>
+        <td>{{ v.libelle }}</td>
+        <td>{{ v.nombre }}</td>
+        <td>{{ "%.2f"|format(v.montant) }} €</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endif %}
+
+<div style="margin-top:1.5rem; display:flex; gap:.6rem; flex-wrap:wrap;">
+  {% if not en_cours and etat.restants > 0 %}
+  <form method="POST" action="{{ url_for('nettoyage_stripe_lancer') }}">
+    <button type="submit">Lancer la vérification (aperçu, rien n'est supprimé)</button>
+  </form>
+  {% endif %}
+  {% if not en_cours and etat.restants == 0 and etat.verifies > 0 and not resultat %}
+  <form method="POST" action="{{ url_for('nettoyage_stripe_appliquer') }}"
+        onsubmit="return confirm('Supprimer définitivement {{ etat.lignes_a_supprimer }} fausse(s) ligne(s) et ajuster les remboursements partiels ?');">
+    <button type="submit">Appliquer le nettoyage ({{ etat.lignes_a_supprimer }} lignes)</button>
+  </form>
+  <form method="POST" action="{{ url_for('nettoyage_stripe_lancer') }}">
+    <button type="submit" class="bouton secondaire" style="background:var(--blanc); color:var(--orange-fonce);">Recommencer la vérification</button>
+  </form>
+  {% endif %}
+  <a class="bouton secondaire" href="{{ url_for('paiements') }}">Retour aux paiements</a>
+</div>
+{% endblock %}
