@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Outils - SecureeTech{% endblock %}
+{% block content %}
+<h2>Outils</h2>
+<p class="sous-titre">Les outils SecureeTech, au même endroit.</p>
+
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:1rem; margin-top:1.2rem;">
+
+  <div class="carte"><div class="carte-corps" style="display:flex; flex-direction:column; gap:.55rem;">
+    <div style="font-size:1.6rem;">🛡️</div>
+    <strong>Vigilance</strong>
+    <p class="sous-titre" style="margin:0;">
+      Les alertes anti-escroquerie en direct : prévenez le client dès qu'un
+      outil de prise en main à distance s'ouvre chez lui, et vérifiez le code
+      à 4 chiffres qu'il vous lit.
+    </p>
+    <a class="bouton" href="https://vigilance-api-production.up.railway.app/" target="_blank" rel="noopener" style="margin-top:.3rem; align-self:flex-start;">Ouvrir Vigilance</a>
+  </div></div>
+
+  {% if est_admin %}
+  <div class="carte"><div class="carte-corps" style="display:flex; flex-direction:column; gap:.55rem;">
+    <div style="font-size:1.6rem;">🔑</div>
+    <strong>Licences OptiPC</strong>
+    <p class="sous-titre" style="margin:0;">
+      Émettre, rechercher, révoquer les licences OptiPC Pro et libérer les
+      postes après une réinstallation. Réservé à l'administration.
+    </p>
+    <a class="bouton" href="https://secureetech.github.io/optipc-license-desk/" target="_blank" rel="noopener" style="margin-top:.3rem; align-self:flex-start;">Ouvrir la console licences</a>
+  </div></div>
+  {% endif %}
+
+  <div class="carte"><div class="carte-corps" style="display:flex; flex-direction:column; gap:.55rem;">
+    <div style="font-size:1.6rem;">🔎</div>
+    <strong>Recherche clients</strong>
+    <p class="sous-titre" style="margin:0;">
+      Retrouver un client et ses paiements pendant l'appel : par nom, e-mail
+      ou référence.
+    </p>
+    <a class="bouton" href="{{ url_for('recherche') }}" style="margin-top:.3rem; align-self:flex-start;">Ouvrir la recherche</a>
+  </div></div>
+
+</div>
+{% endblock %}
