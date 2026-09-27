@@ -1199,14 +1199,36 @@ def envoyer_facture(facture_id):
                 "<p>L'email part uniquement quand le paiement est recu"
                 " et le contrat signe.</p>"
                 "<p><a href='/factures'>Retour aux factures</a></p></div>"), 409
-    contrat_ligne = _contrat_signe_du_client(email_client, client)
+    # Priorite 1 : le contrat genere par le basket pour CETTE facture,
+    # s'il a ete signe (c'est le contrat du nouveau modele, prerempli).
+    contrat_ligne = None
+    pdf_contrat_direct = None
+    doc_basket = str(facture.get('contrat_signnow_id') or '').strip()
+    if doc_basket:
+        try:
+            infos_doc = signnow._appel(f'/document/{doc_basket}')
+            invites_ok = any((i.get('status') or '').lower() in ('fulfilled', 'completed')
+                             for i in (infos_doc.get('field_invites') or []))
+            signatures_ok = bool(infos_doc.get('signatures'))
+            if invites_ok or signatures_ok:
+                pdf_contrat_direct = signnow.telecharger(doc_basket)
+                if pdf_contrat_direct:
+                    contrat_ligne = {'titre': infos_doc.get('document_name') or 'Contrat',
+                                     'signature_request_id': f'signnow_api:{doc_basket}'}
+                    print(f"Contrat joint : contrat de la facture (basket) "
+                          f"{infos_doc.get('document_name')}")
+        except Exception as exc:
+            print(f"Verification contrat basket : {exc}")
+
+    if contrat_ligne is None:
+        contrat_ligne = _contrat_signe_du_client(email_client, client)
     if contrat_ligne is None:
         return (f"<div style='{style_page}'><h2>Envoi bloque</h2>"
                 f"<p>Aucun contrat signe trouve pour <b>{client}</b> ({email_client}).</p>"
                 "<p>L'email part uniquement quand le paiement est recu"
                 " et le contrat signe.</p>"
                 "<p><a href='/factures'>Retour aux factures</a></p></div>"), 409
-    pdf_contrat = _pdf_contrat_signe(contrat_ligne)
+    pdf_contrat = pdf_contrat_direct if pdf_contrat_direct else _pdf_contrat_signe(contrat_ligne)
     lien_contrat = os.environ.get('SIGNNOW_SIGNING_LINK',
                                   'https://signnow.com/s/EJxThaKZ')
     if pdf_contrat:
