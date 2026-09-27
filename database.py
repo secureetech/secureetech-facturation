@@ -305,7 +305,9 @@ def init_factures_formules():
                             ('plateforme', "TEXT DEFAULT ''"),
                             ('lien_paiement', "TEXT DEFAULT ''"),
                             ('numero_tva', "TEXT DEFAULT ''"),
-                            ('statut_paiement', "TEXT DEFAULT 'À régler'")]:
+                            ('statut_paiement', "TEXT DEFAULT 'À régler'"),
+                            ('lien_signnow', "TEXT DEFAULT ''"),
+                            ('contrat_signnow_id', "TEXT DEFAULT ''")]:
         if nom not in colonnes:
             cursor.execute(f'ALTER TABLE factures ADD COLUMN {nom} {definition}')
     cursor.execute(

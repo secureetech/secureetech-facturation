@@ -1347,6 +1347,61 @@ def envoyer_facture(facture_id):
 # du contrat a signer + le numero de facture, au format attendu :
 # { ok, link, invoice_number, facture_url }
 # ---------------------------------------------------------------------------
+def _lien_contrat_prerempli(facture_id, nom, email, adresse='', telephone='',
+                            formule='', duree=0, montant_ttc=None):
+    """Lien SignNow du contrat prerempli de ce client.
+
+    Un contrat par facture : si un lien est deja enregistre, on le renvoie
+    tel quel (pas de doublon, pas de nouveau document facture par SignNow).
+    En cas d'echec, on retombe sur le lien fixe : le comportement actuel
+    est conserve, rien ne casse.
+    """
+    repli = os.environ.get('SIGNNOW_SIGNING_LINK',
+                           'https://signnow.com/s/EJxThaKZ')
+    if not facture_id:
+        return repli
+
+    try:
+        facture = database.obtenir_facture(facture_id) or {}
+        deja = (facture.get('lien_signnow') or '').strip()
+        if deja:
+            return deja
+    except Exception as exc:
+        print(f"Lecture lien contrat : {exc}")
+
+    try:
+        resultat = signnow.creer_contrat(
+            client_nom=nom, email=email, adresse=adresse,
+            telephone=telephone, formule=formule, duree=duree,
+            montant_ttc=montant_ttc)
+    except Exception as exc:
+        print(f"Creation contrat SignNow : {exc}")
+        return repli
+
+    if not resultat.get('ok'):
+        print(f"Creation contrat SignNow : {resultat.get('erreur')}")
+        return repli
+
+    lien = resultat.get('lien') or repli
+    try:
+        connexion = database.get_connection()
+        connexion.execute(
+            "UPDATE factures SET lien_signnow = ?, contrat_signnow_id = ? WHERE id = ?",
+            (lien, resultat.get('document_id') or '', facture_id))
+        connexion.commit()
+        connexion.close()
+    except Exception as exc:
+        print(f"Stockage lien contrat (non bloquant) : {exc}")
+    return lien
+
+
+@app.route('/outils/signnow-champs')
+@admin_required
+def outils_signnow_champs():
+    """Inventaire des champs du modele SignNow (diagnostic)."""
+    return jsonify(signnow.champs_du_modele())
+
+
 @app.route('/api/contrat', methods=['POST'])
 def api_contrat():
     donnees = request.get_json(silent=True) or request.form.to_dict()
@@ -1460,8 +1515,13 @@ def api_contrat():
     cle_licence = _licence_de_facture(facture_courante, telephone_client)
     duree_licence = facture_courante.get('duree') or duree or 12
 
-    lien_contrat = os.environ.get('SIGNNOW_SIGNING_LINK',
-                                  'https://signnow.com/s/EJxThaKZ')
+    lien_contrat = _lien_contrat_prerempli(
+        facture_id, nom, email,
+        adresse=adresse,
+        telephone=telephone_client,
+        formule=formule,
+        duree=duree,
+        montant_ttc=calcul.get('ttc'))
 
     return jsonify({
         'ok': True,

@@ -214,3 +214,200 @@ def telecharger(document_id):
     """PDF signé d'un document SignNow."""
     return _appel(f'/document/{document_id}/download',
                   {'type': 'collapsed'}, binaire=True)
+
+
+# ---------------------------------------------------------------------------
+# Création d'un contrat prérempli à partir du modèle SecureeTech.
+#
+# Enchaînement (endpoints officiels SignNow) :
+#   1. POST /template/{id}/copy                  -> document signable
+#   2. GET  /document/{id}                       -> noms réels des champs
+#   3. PUT  /v2/documents/{id}/prefill-texts     -> valeurs préremplies
+#   4. POST /link                                -> lien d'invitation
+# ---------------------------------------------------------------------------
+
+# Correspondance EXPLICITE entre les champs du modèle SecureeTech et nos
+# données. SignNow nomme ses champs automatiquement ("Full Name 1",
+# "Text Field 1"...) : un nom générique comme "Text Field 1" ne peut pas
+# être deviné par mot-clé, il doit être listé ici.
+# Relevé sur le modèle Contrat_Secureetech_modele (4 pages, 19 champs).
+MAPPING_MODELE = {
+    'Full Name 1': 'client_nom',
+    'Text Field 1': 'adresse',
+    'Phone Number 1': 'telephone',
+    'Email 1': 'email',
+}
+
+# Repli par mot-clé, pour les champs nommés lisiblement (et si le modèle
+# évolue). Appliqué seulement si le nom n'est pas dans MAPPING_MODELE.
+CORRESPONDANCES = (
+    ('client_nom', ('nom_complet', 'nom complet', 'full name', 'client', 'nom', 'name')),
+    ('adresse', ('adresse', 'address')),
+    ('email', ('email', 'mail', 'courriel')),
+    ('telephone', ('telephone', 'téléphone', 'phone', 'tel')),
+    ('formule', ('formule', 'offre', 'service', 'abonnement', 'plan')),
+    ('duree', ('duree', 'durée', 'mois', 'duration')),
+    ('montant', ('montant', 'prix', 'total', 'ttc', 'amount')),
+    ('date', ('date',)),
+)
+
+
+def _appel_ecriture(methode, chemin, corps=None):
+    """POST/PUT sur l'API, avec rafraîchissement du jeton si nécessaire."""
+    ids = _identifiants()
+    if not configure():
+        raise SignNowIndisponible("Identifiants SignNow absents du serveur.")
+
+    jeton = ids['access_token']
+    for tentative in (1, 2):
+        reponse = requests.request(
+            methode, f'{BASE}{chemin}',
+            headers={'Authorization': f'Bearer {jeton}',
+                     'Content-Type': 'application/json'},
+            json=corps if corps is not None else {},
+            timeout=45)
+        if reponse.status_code == 401 and tentative == 1:
+            jeton = _rafraichir_jeton(ids)
+            continue
+        if reponse.status_code not in (200, 201, 204):
+            raise SignNowIndisponible(
+                f"SignNow a répondu {reponse.status_code} sur {chemin} "
+                f"({reponse.text[:200]}).")
+        if reponse.status_code == 204 or not reponse.content:
+            return {}
+        try:
+            return reponse.json()
+        except ValueError:
+            return {}
+
+    raise SignNowIndisponible("Authentification SignNow impossible.")
+
+
+def champs_du_document(document_id):
+    """Noms des champs texte d'un document, tels que SignNow les connaît."""
+    document = _appel(f'/document/{document_id}')
+    noms = []
+    for champ in (document.get('fields') or []):
+        nom = (champ.get('json_attributes') or {}).get('name') or champ.get('name')
+        type_champ = (champ.get('type') or '').lower()
+        if nom and type_champ in ('text', ''):
+            noms.append(nom)
+    return noms
+
+
+def _valeurs_a_prefixer(noms_champs, donnees):
+    """Associe les champs réels du document à nos données.
+
+    Le mapping explicite du modèle prime ; sinon on tente les mots-clés.
+    Un champ qu'on ne sait pas identifier est laissé vide, jamais rempli
+    au hasard.
+    """
+    fields = []
+    for nom in noms_champs:
+        cle = MAPPING_MODELE.get(nom)
+        if cle is None:
+            nom_bas = nom.lower()
+            for cle_test, motifs in CORRESPONDANCES:
+                if any(motif in nom_bas for motif in motifs):
+                    cle = cle_test
+                    break
+        if not cle:
+            continue
+        valeur = donnees.get(cle)
+        if valeur in (None, ''):
+            continue
+        fields.append({'field_name': nom, 'prefilled_text': str(valeur)})
+    return fields
+
+
+def champs_du_modele(template_id=None):
+    """Inventaire des champs du modèle : nom, type, page.
+
+    Sert au diagnostic : c'est ce qui permet de compléter MAPPING_MODELE
+    sans avoir à ouvrir l'éditeur SignNow.
+    """
+    template_id = (template_id or os.getenv('SIGNNOW_TEMPLATE_ID', '')).strip()
+    if not template_id:
+        return {'ok': False, 'erreur': "SIGNNOW_TEMPLATE_ID absent du serveur."}
+    if not configure():
+        return {'ok': False, 'erreur': "Identifiants SignNow absents du serveur."}
+    try:
+        document = _appel(f'/document/{template_id}')
+    except SignNowIndisponible as exc:
+        return {'ok': False, 'erreur': str(exc)}
+
+    champs = []
+    for champ in (document.get('fields') or []):
+        attributs = champ.get('json_attributes') or {}
+        nom = attributs.get('name') or champ.get('name') or ''
+        champs.append({
+            'nom': nom,
+            'type': champ.get('type') or '',
+            'page': attributs.get('page_number'),
+            'etiquette': attributs.get('label') or '',
+            'associe_a': MAPPING_MODELE.get(nom, ''),
+        })
+    return {'ok': True, 'document': document.get('document_name') or '',
+            'total': len(champs), 'champs': champs}
+
+
+def creer_contrat(client_nom, email, adresse='', telephone='', formule='',
+                  duree=0, montant_ttc=None, template_id=None):
+    """Crée un contrat prérempli pour un client et renvoie son lien de signature.
+
+    Renvoie un dict : {'ok': True, 'lien': ..., 'document_id': ...,
+                       'champs_remplis': [...]} ou {'ok': False, 'erreur': ...}.
+    Ne lève jamais : l'appelant garde son lien de repli en cas d'échec.
+    """
+    template_id = (template_id or os.getenv('SIGNNOW_TEMPLATE_ID', '')).strip()
+    if not template_id:
+        return {'ok': False,
+                'erreur': "SIGNNOW_TEMPLATE_ID absent des variables du serveur."}
+    if not configure():
+        return {'ok': False, 'erreur': "Identifiants SignNow absents du serveur."}
+
+    donnees = {
+        'client_nom': client_nom or '',
+        'adresse': adresse or '',
+        'email': email or '',
+        'telephone': telephone or '',
+        'formule': formule or '',
+        'duree': (f"{duree} mois" if duree else ''),
+        'montant': (f"{float(montant_ttc):.2f} EUR" if montant_ttc else ''),
+        'date': datetime.now().strftime('%d/%m/%Y'),
+    }
+
+    try:
+        nom_doc = f"Contrat - {client_nom} - {datetime.now().strftime('%Y-%m-%d')}"
+        copie = _appel_ecriture('POST', f'/template/{template_id}/copy',
+                                {'document_name': nom_doc})
+        document_id = copie.get('id') or copie.get('document_id')
+        if not document_id:
+            return {'ok': False,
+                    'erreur': "SignNow n'a pas renvoyé d'identifiant de document."}
+
+        champs_remplis = []
+        try:
+            noms = champs_du_document(document_id)
+            fields = _valeurs_a_prefixer(noms, donnees)
+            if fields:
+                _appel_ecriture('PUT', f'/v2/documents/{document_id}/prefill-texts',
+                                {'fields': fields})
+                champs_remplis = [f['field_name'] for f in fields]
+        except SignNowIndisponible as exc:
+            # Document créé mais préremplissage refusé : on garde le document.
+            print(f"Préremplissage SignNow : {exc}")
+
+        lien = _appel_ecriture('POST', '/link', {'document_id': document_id})
+        url = lien.get('url_no_signup') or lien.get('url') or ''
+        if not url:
+            return {'ok': False, 'document_id': document_id,
+                    'erreur': "SignNow n'a pas renvoyé de lien de signature."}
+
+        return {'ok': True, 'lien': url, 'document_id': document_id,
+                'champs_remplis': champs_remplis}
+
+    except SignNowIndisponible as exc:
+        return {'ok': False, 'erreur': str(exc)}
+    except Exception as exc:  # pragma: no cover
+        return {'ok': False, 'erreur': f"Erreur inattendue : {exc}"}
