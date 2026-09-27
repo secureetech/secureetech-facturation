@@ -242,8 +242,10 @@ MAPPING_MODELE = {
     'Text Field 2': 'telephone',     # label « Portable »
     'Phone Number 1': 'telephone',   # ancien modele
     'Email 1': 'email',
-    'Date and Time 1': 'date',
-    'Date and Time 2': 'date',
+    # Champs date du modele : validation stricte cote SignNow (format impose),
+    # et ils se remplissent au moment de la signature -> on ne les prefixe pas.
+    'Date and Time 1': '',
+    'Date and Time 2': '',
 }
 
 # Repli par mot-clé, pour les champs nommés lisiblement (et si le modèle
@@ -399,9 +401,25 @@ def creer_contrat(client_nom, email, adresse='', telephone='', formule='',
             noms = champs_du_document(document_id)
             fields = _valeurs_a_prefixer(noms, donnees)
             if fields:
-                _appel_ecriture('PUT', f'/v2/documents/{document_id}/prefill-texts',
-                                {'fields': fields})
-                champs_remplis = [f['field_name'] for f in fields]
+                try:
+                    _appel_ecriture('PUT', f'/v2/documents/{document_id}/prefill-texts',
+                                    {'fields': fields})
+                    champs_remplis = [f['field_name'] for f in fields]
+                except SignNowIndisponible as exc_bloc:
+                    # Un seul champ invalide rejette tout le lot : on remplit
+                    # alors champ par champ pour garder le maximum.
+                    print(f"Préremplissage en bloc refusé ({exc_bloc}) ;"
+                          " nouvel essai champ par champ.")
+                    for champ_seul in fields:
+                        try:
+                            _appel_ecriture(
+                                'PUT',
+                                f'/v2/documents/{document_id}/prefill-texts',
+                                {'fields': [champ_seul]})
+                            champs_remplis.append(champ_seul['field_name'])
+                        except SignNowIndisponible as exc_champ:
+                            print(f"Champ {champ_seul['field_name']}"
+                                  f" refusé : {exc_champ}")
         except SignNowIndisponible as exc:
             # Document créé mais préremplissage refusé : on garde le document.
             print(f"Préremplissage SignNow : {exc}")
