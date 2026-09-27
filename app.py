@@ -1079,9 +1079,11 @@ def _contrat_signe_du_client(email_client, nom_client):
             statut = str(ligne.get('statut') or '').lower()
             titre = str(ligne.get('titre') or '').lower()
             email_sig = str(ligne.get('signataire_email') or '').strip().lower()
+            est_signe = str(ligne.get('signe') or '') in ('1', 'True', 'true')
         except Exception:
-            statut, titre, email_sig = '', '', ''
-        if statut and 'sign' not in statut:
+            statut, titre, email_sig, est_signe = '', '', '', False
+        if not (est_signe or 'sign' in statut
+                or statut in ('fulfilled', 'completed')):
             continue
         if ('affiliation' in titre or 'partenariat' in titre
                 or 'partenaire' in titre):
