@@ -615,6 +615,15 @@ def nettoyage_stripe_appliquer():
     return render_template('nettoyage_stripe.html', etat=_nettoyage.etat(),
                            en_cours=False, erreur=None, resultat=resultat)
 
+# ============ PAGE OUTILS (accessible aux vendeurs) ============
+@app.route('/outils')
+@login_required
+def outils():
+    """Les outils SecureeTech au meme endroit. Vigilance pour tout le
+    monde ; les licences OptiPC restent reservees a l'administrateur
+    (le gabarit s'appuie sur est_admin)."""
+    return render_template('outils.html')
+
 # ============ PAGE FACTURES ============
 @app.route('/factures/<int:facture_id>/supprimer', methods=['POST'])
 @admin_required
