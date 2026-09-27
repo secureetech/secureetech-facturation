@@ -231,11 +231,19 @@ def telecharger(document_id):
 # "Text Field 1"...) : un nom générique comme "Text Field 1" ne peut pas
 # être deviné par mot-clé, il doit être listé ici.
 # Relevé sur le modèle Contrat_Secureetech_modele (4 pages, 19 champs).
+# Releve sur le NOUVEAU modele Contrat_secureetech (27/09/2026, 7 pages,
+# 39 champs dont 9 champs texte). Les entrees de l'ancien modele sont
+# conservees : un nom absent du document est simplement ignore.
 MAPPING_MODELE = {
     'Full Name 1': 'client_nom',
-    'Text Field 1': 'adresse',
-    'Phone Number 1': 'telephone',
+    'Full Name 2': 'client_nom',
+    'nom_client': 'client_nom',
+    'Text Field 1': 'adresse',       # label « Adresse »
+    'Text Field 2': 'telephone',     # label « Portable »
+    'Phone Number 1': 'telephone',   # ancien modele
     'Email 1': 'email',
+    'Date and Time 1': 'date',
+    'Date and Time 2': 'date',
 }
 
 # Repli par mot-clé, pour les champs nommés lisiblement (et si le modèle
