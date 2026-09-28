@@ -20,6 +20,13 @@ import hashlib
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 
+# Derriere le proxy Railway : url_for(_external=True) doit generer du https.
+try:
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+except Exception as _exc_proxy:
+    print(f"ProxyFix indisponible : {_exc_proxy}")
+
 # ---------------------------------------------------------------------------
 # Persistance : la base et les contrats signes vivent sur le volume Railway
 # (/data). Sans cela, chaque deploiement repartait du fichier commite dans
