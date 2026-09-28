@@ -25,14 +25,15 @@ function copierCle(bouton, cle) {
 </div></div>
 {% endif %}
 
-<form method="post" class="filtres" style="margin-top:1.25rem;">
+<form method="post" class="filtres" style="margin-top:1.25rem;" id="creer">
   <h3 style="margin-top:0;">Nouvelle facture</h3>
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:.9rem;">
-    <div><label>Nom du client</label><input type="text" name="client_nom" required placeholder="Nom et prénom"></div>
-    <div><label>Email</label><input type="email" name="email" placeholder="Facultatif"></div>
+    <div><label>Nom du client</label><input type="text" name="client_nom" required placeholder="Nom et prénom" value="{{ request.args.get('client_nom', '') }}"></div>
+    <div><label>Email</label><input type="email" name="email" placeholder="Facultatif" value="{{ request.args.get('email', '') }}"></div>
+    <div><label>Téléphone</label><input type="text" name="client_telephone" placeholder="Facultatif — apparaît sur la facture" value="{{ request.args.get('telephone', '') }}"></div>
   </div>
   <div style="display:grid; grid-template-columns:1fr; gap:.9rem; margin-top:.9rem;">
-    <div><label>Adresse du client</label><input type="text" name="client_adresse" placeholder="Facultatif — apparaît sur la facture"></div>
+    <div><label>Adresse du client</label><input type="text" name="client_adresse" placeholder="Facultatif — apparaît sur la facture" value="{{ request.args.get('adresse', '') }}"></div>
   </div>
 
   <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:.9rem; margin-top:.9rem;">
