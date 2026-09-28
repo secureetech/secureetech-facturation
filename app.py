@@ -771,6 +771,7 @@ def factures():
         client_nom = (request.form.get('client_nom') or '').strip()
         email = (request.form.get('email') or '').strip()
         adresse = (request.form.get('client_adresse') or '').strip()
+        telephone_saisi = (request.form.get('client_telephone') or '').strip()
         choix = request.form.get('formule') or ''
         prix_libre = (request.form.get('montant_ht') or '').strip()
         date_facture = request.form.get('date_facture') or datetime.now().strftime('%Y-%m-%d')
@@ -790,7 +791,7 @@ def factures():
                 erreur = "Cette combinaison formule / durée n'existe pas."
             else:
                 numero = (request.form.get('numero_facture') or '').strip() or _numero_facture()
-                database.ajouter_facture(
+                facture_creee = database.ajouter_facture(
                     numero_facture=numero,
                     date_facture=date_facture,
                     client_nom=client_nom,
@@ -802,6 +803,16 @@ def factures():
                     montant_ht=calcul['ht'],
                     tva=calcul['tva'],
                     client_adresse=adresse)
+                if telephone_saisi and facture_creee:
+                    try:
+                        connexion = database.get_connection()
+                        connexion.execute(
+                            "UPDATE factures SET client_telephone = ? WHERE id = ?",
+                            (telephone_saisi, facture_creee))
+                        connexion.commit()
+                        connexion.close()
+                    except Exception as exc:
+                        print(f"Stockage telephone (non bloquant) : {exc}")
                 message = (f"Facture {numero} créée : {formules.description(nom_formule, duree)} — "
                            f"{calcul['ht']:.2f} € HT + {calcul['tva']:.2f} € de TVA "
                            f"= {calcul['ttc']:.2f} € TTC.")
