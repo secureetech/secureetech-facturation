@@ -465,6 +465,91 @@ def licences_recherche():
                            resultats=resultats, erreur=erreur)
 
 
+def _profil_client(client_nom):
+    """Paiements du client (tries du plus recent au plus ancien), email,
+    et total du dernier groupe de paiements (fenetre 30 jours)."""
+    lignes = database.obtenir_paiements_client(client_nom) or []
+
+    def _dp(p):
+        try:
+            return datetime.strptime(str(p.get('date_paiement') or '')[:10], '%Y-%m-%d')
+        except Exception:
+            return datetime.min
+
+    lignes = sorted(lignes, key=_dp, reverse=True)
+    email = next((p.get('email') for p in lignes if p.get('email')), '') or ''
+    total = 0.0
+    if lignes:
+        ref = _dp(lignes[0])
+        for p in lignes:
+            if (ref - _dp(p)).days <= 30:
+                try:
+                    total += float(p.get('montant') or 0)
+                except Exception:
+                    pass
+    return lignes, email, round(total, 2)
+
+
+@app.route('/clients/generer-facture', methods=['POST'])
+@admin_required
+def clients_generer_facture():
+    """Cree la facture du client en un clic : la formule est deduite du
+    montant qu'il a paye (paiements a moins de 30 jours cumules).
+
+    Montant ambigu ou hors grille -> formulaire pre-rempli a completer.
+    """
+    client_nom = (request.form.get('client_nom') or '').strip()
+    if not client_nom:
+        return redirect(url_for('clients'))
+    lignes, email, total = _profil_client(client_nom)
+    if not lignes or total <= 0:
+        return redirect(url_for('factures', client_nom=client_nom, email=email) + '#creer')
+    formule_nom, duree = _formule_depuis_montant(total)
+    if not formule_nom:
+        return redirect(url_for('factures', client_nom=client_nom, email=email) + '#creer')
+    calcul = formules.montants(formule_nom, duree)
+    numero = _numero_facture()
+    date_ref = str(lignes[0].get('date_paiement') or '')[:10] or datetime.now().strftime('%Y-%m-%d')
+    database.ajouter_facture(
+        numero_facture=numero,
+        date_facture=date_ref,
+        client_nom=client_nom,
+        montant=calcul['ttc'],
+        email=email,
+        description=formules.description(formule_nom, duree),
+        formule=formule_nom,
+        duree=duree,
+        montant_ht=calcul['ht'],
+        tva=calcul['tva'],
+        client_adresse='')
+    print(f"Facture 1 clic : {numero} pour {client_nom} ({formule_nom} {duree})")
+    return redirect(url_for('factures', creee=numero))
+
+
+@app.route('/clients/generer-contrat', methods=['POST'])
+@admin_required
+def clients_generer_contrat():
+    """Cree le contrat pre-rempli (modele SecureeTech) du client en un clic
+    et affiche le lien de signature a lui transmettre."""
+    client_nom = (request.form.get('client_nom') or '').strip()
+    if not client_nom:
+        return redirect(url_for('clients'))
+    lignes, email, total = _profil_client(client_nom)
+    formule_nom, duree = _formule_depuis_montant(total) if total else (None, None)
+    resultat = {}
+    try:
+        resultat = signnow.creer_contrat(
+            client_nom=client_nom, email=email,
+            formule=formule_nom or '', duree=duree or 0,
+            montant_ttc=total or None)
+    except Exception as exc:
+        resultat = {'ok': False, 'erreur': str(exc)}
+    return render_template('contrat_genere.html',
+                           client_nom=client_nom, email=email,
+                           lien=resultat.get('lien') if resultat.get('ok') else None,
+                           erreur=None if resultat.get('ok') else (resultat.get('erreur') or 'Creation impossible.'))
+
+
 @app.route('/recherche')
 @login_required
 def recherche():
@@ -766,6 +851,8 @@ def factures():
     """Génération de factures à partir du catalogue de formules."""
     message = None
     erreur = None
+    if request.args.get('creee'):
+        message = f"Facture {request.args.get('creee')} créée en un clic."
 
     if request.method == 'POST':
         client_nom = (request.form.get('client_nom') or '').strip()
