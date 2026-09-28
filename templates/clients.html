@@ -45,7 +45,9 @@
         <td class="centre">{{ c.nb_transactions }}</td>
         <td>{% for s in (c.sources or '').split(',') if s %}<span class="tag">{{ s }}</span>{% endfor %}</td>
         <td class="discret">{{ c.dernier_paiement }}</td>
-        <td><a href="{{ url_for('detail_client', client_nom=c.client_nom) }}">Détails</a></td>
+        <td style="white-space:nowrap"><a href="{{ url_for('detail_client', client_nom=c.client_nom) }}">Détails</a>
+          <a class="bouton" style="font-size:.78rem;padding:.28rem .6rem;margin-left:8px"
+             href="{{ url_for('factures', client_nom=c.client_nom, email=c.email or '') }}#creer">Générer facture</a></td>
       </tr>
       {% endfor %}
     </tbody>
