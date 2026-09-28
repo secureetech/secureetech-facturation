@@ -403,6 +403,20 @@ def _consommer_recherche():
 
 
 # ============ RECHERCHE (accessible aux vendeurs) ============
+@app.route('/licences-optipc')
+@admin_required
+def licences_optipc():
+    """La console licences OptiPC, integree au dashboard (page existante)."""
+    return render_template('licences_optipc.html')
+
+
+@app.route('/vigilance')
+@login_required
+def vigilance_page():
+    """Vigilance, integre au dashboard (page existante)."""
+    return render_template('vigilance.html')
+
+
 @app.route('/recherche')
 @login_required
 def recherche():
