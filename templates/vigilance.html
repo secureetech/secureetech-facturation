@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Vigilance - Secureetech Facturation{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin:.2rem 0 .6rem;">
+  <h2 style="margin:0">Vigilance</h2>
+  <a href="https://vigilance-api-production.up.railway.app/" target="_blank" rel="noopener"
+     style="font-size:.8rem;color:#999;">Ouvrir en plein écran ↗</a>
+</div>
+<iframe src="https://vigilance-api-production.up.railway.app/"
+        style="width:100%;height:calc(100vh - 150px);border:0;border-radius:8px;background:#fff;"
+        title="Vigilance"></iframe>
+{% endblock %}
