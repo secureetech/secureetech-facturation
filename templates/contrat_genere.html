@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Contrat généré - Secureetech{% endblock %}
+
+{% block content %}
+<h2>Contrat pré-rempli</h2>
+{% if lien %}
+  <p>Le contrat de <strong>{{ client_nom }}</strong>{% if email %} ({{ email }}){% endif %} est prêt.
+     Transmettez-lui ce lien de signature :</p>
+  <div style="background:#f7f7f9;padding:1rem 1.2rem;border-radius:8px;display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;">
+    <a href="{{ lien }}" target="_blank" rel="noopener" style="font-family:monospace;word-break:break-all;">{{ lien }}</a>
+    <button type="button" class="bouton" onclick="navigator.clipboard.writeText('{{ lien }}').then(()=>{this.textContent='Copié ✓';setTimeout(()=>this.textContent='Copier le lien',1500)})">Copier le lien</button>
+  </div>
+  <p class="discret" style="margin-top:.8rem;">Une fois signé, il sera automatiquement reconnu et joint aux e-mails de facturation de ce client.</p>
+{% else %}
+  <p style="color:#a33;">Impossible de créer le contrat : {{ erreur }}</p>
+{% endif %}
+<p style="margin-top:1.2rem;"><a href="{{ url_for('clients') }}">← Retour aux clients</a></p>
+{% endblock %}
