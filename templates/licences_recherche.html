@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Licences OptiPC - Secureetech{% endblock %}
+
+{% block content %}
+<h2>Licences OptiPC — recherche client</h2>
+<p class="discret" style="margin:.2rem 0 1rem;">Retrouvez la licence d'un client par son nom, son e-mail ou son numéro de téléphone. Consultation uniquement.</p>
+
+<form method="get" style="background:#f7f7f9;padding:1rem 1.2rem;border-radius:8px;margin:0 0 1.2rem;display:flex;gap:.8rem;align-items:end;flex-wrap:wrap;">
+  <div style="flex:1;min-width:240px;">
+    <label for="q" style="font-size:.8rem;color:#666;">Nom, e-mail ou téléphone</label><br>
+    <input type="text" id="q" name="q" value="{{ q }}" placeholder="ex. martine durieu, 06 12 34 56 78, nom@mail.fr"
+           style="width:100%;padding:.55rem .7rem;border:1px solid #ddd;border-radius:6px;" autofocus>
+  </div>
+  <button type="submit" class="bouton">Rechercher</button>
+</form>
+
+{% if erreur %}
+  <p style="color:#a33;">{{ erreur }}</p>
+{% elif q and not resultats %}
+  <p style="text-align:center;padding:2rem;color:#999;">Aucune licence trouvée pour « {{ q }} ».</p>
+{% elif resultats %}
+<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+<table>
+  <thead>
+    <tr style="background:#f0f0f0;">
+      <th>Client</th>
+      <th>Téléphone</th>
+      <th>E-mail</th>
+      <th>Clé de licence</th>
+      <th>Expire le</th>
+      <th>Statut</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in resultats %}
+    <tr>
+      <td>{{ r.customer_name or '-' }}</td>
+      <td style="white-space:nowrap">{{ r.phone or '-' }}</td>
+      <td>{{ r.email or '-' }}</td>
+      <td style="white-space:nowrap"><span style="font-family:monospace;font-size:11px">{{ r.key_full }}</span>
+        <button type="button" onclick="copierCle(this, '{{ r.key_full }}')"
+                style="cursor:pointer;font-size:11px;padding:2px 8px;margin-left:4px">Copier</button></td>
+      <td style="white-space:nowrap">{{ (r.current_period_end or '')[:10] or '-' }}</td>
+      <td>{% if r.status == 'active' %}<span style="background:#e6f7e9;color:#1c7c31;padding:.15rem .5rem;border-radius:3px;font-size:.8rem;">active</span>
+          {% else %}<span style="background:#fdecec;color:#a33;padding:.15rem .5rem;border-radius:3px;font-size:.8rem;">{{ r.status }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<script>
+function copierCle(bouton, cle) {
+  navigator.clipboard.writeText(cle).then(function () {
+    var avant = bouton.textContent;
+    bouton.textContent = 'Copié ✓';
+    setTimeout(function () { bouton.textContent = avant; }, 1500);
+  });
+}
+</script>
+{% endblock %}
