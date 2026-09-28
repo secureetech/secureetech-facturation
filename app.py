@@ -417,6 +417,54 @@ def vigilance_page():
     return render_template('vigilance.html')
 
 
+@app.route('/licences-recherche')
+@login_required
+def licences_recherche():
+    """Recherche de licences OptiPC (nom, email ou telephone) pour l'equipe.
+
+    Lecture seule : le jeton API reste sur le serveur, aucun acces API
+    n'est expose au navigateur, et aucune action n'est possible d'ici.
+    """
+    import re as regex
+    import requests as requetes_http
+    q = (request.args.get('q') or '').strip()
+    resultats, erreur = [], None
+    if q and len(q) >= 3:
+        jeton = os.environ.get('OPTIPC_ADMIN_TOKEN', '')
+        base_api = os.environ.get('OPTIPC_API_BASE', 'https://api.secureetech.com')
+        entetes = {'x-admin-token': jeton, 'User-Agent': 'Secureetech-Facturation/1.0'}
+        chiffres = regex.sub(r'\D', '', q)
+        try:
+            if len(chiffres) >= 6:
+                # Recherche par telephone : l'API ne la propose pas, on
+                # compare nous-memes les 9 derniers chiffres (gere 0X / +33X).
+                fin = chiffres[-9:]
+                for page in range(3):
+                    rep = requetes_http.get(f"{base_api}/v1/admin/licenses",
+                                            params={'limit': 200, 'offset': page * 200},
+                                            headers=entetes, timeout=15).json()
+                    lot = rep.get('results') or []
+                    for r in lot:
+                        tel = regex.sub(r'\D', '', str(r.get('phone') or ''))
+                        if tel and tel[-9:] == fin:
+                            resultats.append(r)
+                    if len(lot) < 200:
+                        break
+            else:
+                rep = requetes_http.get(f"{base_api}/v1/admin/licenses",
+                                        params={'limit': 25, 'q': q},
+                                        headers=entetes, timeout=15).json()
+                resultats = rep.get('results') or []
+            resultats = resultats[:25]
+        except Exception as exc:
+            print(f"Recherche licences : {exc}")
+            erreur = "Recherche momentanement indisponible."
+    elif q:
+        erreur = "Tapez au moins 3 caracteres."
+    return render_template('licences_recherche.html', q=q,
+                           resultats=resultats, erreur=erreur)
+
+
 @app.route('/recherche')
 @login_required
 def recherche():
