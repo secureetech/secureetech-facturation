@@ -712,10 +712,25 @@ def api_ajouter_facture():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
 
+def _cle_pdf_facture(facture_id):
+    """Cle signee permettant de telecharger UNE facture sans etre connecte.
+
+    Derivee de la SECRET_KEY : impossible a deviner pour une autre facture.
+    """
+    graine = f"{config.SECRET_KEY}|pdf-facture|{facture_id}".encode()
+    return hashlib.sha256(graine).hexdigest()[:24]
+
+
 @app.route('/api/factures/<int:facture_id>/pdf')
-@admin_required
 def api_facture_pdf(facture_id):
-    """PDF de la facture, aux couleurs SecureeTech."""
+    """PDF de la facture, aux couleurs SecureeTech.
+
+    Accessible par l'administrateur connecte, ou par quiconque possede
+    le lien signe (?cle=...) renvoye par le generateur du basket.
+    """
+    cle_recue = (request.args.get('cle') or '').strip()
+    if session.get('role') != 'admin' and cle_recue != _cle_pdf_facture(facture_id):
+        return redirect(url_for('connexion'))
     facture = database.obtenir_facture(facture_id)
     if not facture:
         return jsonify({'error': 'Facture non trouvée'}), 404
@@ -986,7 +1001,8 @@ def api_creer_facture():
             'montant_ht': existante['montant_ht'],
             'tva': existante['tva'],
             'montant_ttc': existante['montant'],
-            'pdf': url_for('api_facture_pdf', facture_id=existante['id'], _external=True),
+            'pdf': url_for('api_facture_pdf', facture_id=existante['id'],
+                           cle=_cle_pdf_facture(existante['id']), _external=True),
         }), 200
 
     numero = (donnees.get('numero') or '').strip() or _numero_facture()
@@ -1028,7 +1044,8 @@ def api_creer_facture():
         'montant_ht': calcul['ht'],
         'tva': calcul['tva'],
         'montant_ttc': calcul['ttc'],
-        'pdf': url_for('api_facture_pdf', facture_id=facture_id, _external=True),
+        'pdf': url_for('api_facture_pdf', facture_id=facture_id,
+                       cle=_cle_pdf_facture(facture_id), _external=True),
     }), 201
 
 
@@ -1578,7 +1595,8 @@ def api_contrat():
         'ok': True,
         'link': lien_contrat,
         'invoice_number': numero,
-        'facture_url': url_for('api_facture_pdf', facture_id=facture_id, _external=True),
+        'facture_url': url_for('api_facture_pdf', facture_id=facture_id,
+                                cle=_cle_pdf_facture(facture_id), _external=True),
         'licence_optipc': cle_licence,
         'licence_duree_mois': duree_licence,
     }), 200
