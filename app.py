@@ -563,6 +563,58 @@ def paiements():
         max_amount=float(max_amount) if max_amount else None
     )
     
+    # Regroupement : les paiements d'un meme client espaces de moins de
+    # 30 jours (paiement en plusieurs fois) deviennent UNE ligne avec le
+    # total paye, le nombre de paiements et le detail des montants.
+    def _cle_client_paiement(p):
+        e = str(p.get('email') or '').strip().lower()
+        return e or str(p.get('client_nom') or '').strip().lower() or None
+
+    def _date_paiement_dt(p):
+        s = str(p.get('date_paiement') or '')[:10]
+        try:
+            return datetime.strptime(s, '%Y-%m-%d')
+        except Exception:
+            return None
+
+    groupes_par_client = {}
+    lignes_groupees = []
+    for p in paiements_filtres:
+        cle = _cle_client_paiement(p)
+        dp = _date_paiement_dt(p)
+        groupe = None
+        if cle and dp:
+            for candidat in groupes_par_client.get(cle, []):
+                if candidat['_date_ref'] and abs((candidat['_date_ref'] - dp).days) <= 30:
+                    groupe = candidat
+                    break
+        if groupe is None:
+            groupe = {'date_paiement': p.get('date_paiement'),
+                      'client_nom': p.get('client_nom'),
+                      'montant': 0.0, 'nb_paiements': 0,
+                      'details': [], 'sources': [], 'references': [],
+                      '_date_ref': dp}
+            if cle:
+                groupes_par_client.setdefault(cle, []).append(groupe)
+            lignes_groupees.append(groupe)
+        try:
+            montant_p = float(p.get('montant') or 0)
+        except Exception:
+            montant_p = 0.0
+        groupe['montant'] += montant_p
+        groupe['nb_paiements'] += 1
+        groupe['details'].append(montant_p)
+        source_p = str(p.get('source') or '').strip()
+        if source_p and source_p not in groupe['sources']:
+            groupe['sources'].append(source_p)
+        ref_p = str(p.get('reference_externe') or '').strip()
+        if ref_p:
+            groupe['references'].append(ref_p)
+    for g in lignes_groupees:
+        g['source'] = ' + '.join(g['sources']) or '-'
+        g['reference_externe'] = ' · '.join(g['references'][:2]) + (' …' if len(g['references']) > 2 else '')
+    paiements_filtres = lignes_groupees
+
     # Sources disponibles
     all_paiements = database.obtenir_tous_paiements()
     sources_list = sorted(list(set(p['source'] for p in all_paiements)))
