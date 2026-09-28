@@ -7,6 +7,7 @@
 {% endmacro %}
 {% block content %}
 <h2>Clients</h2>
+<p class="discret" style="margin:.3rem 0 .8rem;"><a href="{{ url_for('paiements') }}">Vue détaillée des paiements (filtres par date, plateforme, montant) →</a></p>
 <p class="sous-titre">{{ clients|length }} client{{ 's' if clients|length > 1 else '' }} &middot; {{ nb_paiements }} paiements &middot; {{ "%.2f"|format(total_affiche) }} €</p>
 
 <form method="get" class="filtres">
@@ -46,8 +47,14 @@
         <td>{% for s in (c.sources or '').split(',') if s %}<span class="tag">{{ s }}</span>{% endfor %}</td>
         <td class="discret">{{ c.dernier_paiement }}</td>
         <td style="white-space:nowrap"><a href="{{ url_for('detail_client', client_nom=c.client_nom) }}">Détails</a>
-          <a class="bouton" style="font-size:.78rem;padding:.28rem .6rem;margin-left:8px"
-             href="{{ url_for('factures', client_nom=c.client_nom, email=c.email or '') }}#creer">Générer facture</a></td>
+          <form method="post" action="{{ url_for('clients_generer_facture') }}" style="display:inline;margin-left:8px">
+            <input type="hidden" name="client_nom" value="{{ c.client_nom }}">
+            <button type="submit" class="bouton" style="font-size:.78rem;padding:.28rem .6rem;cursor:pointer">Générer facture</button>
+          </form>
+          <form method="post" action="{{ url_for('clients_generer_contrat') }}" style="display:inline;margin-left:4px">
+            <input type="hidden" name="client_nom" value="{{ c.client_nom }}">
+            <button type="submit" style="font-size:.78rem;padding:.28rem .6rem;cursor:pointer">Contrat</button>
+          </form></td>
       </tr>
       {% endfor %}
     </tbody>
