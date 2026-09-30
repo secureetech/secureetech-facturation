@@ -541,6 +541,11 @@ def voir_contrat_facture(facture_id):
         return "Facture introuvable.", 404
     doc_id = str(facture.get('contrat_signnow_id') or '').strip()
     lien = str(facture.get('lien_signnow') or '').strip()
+    # Tant que le client n'a pas signe, le PDF telecharge sort vierge
+    # (SignNow n'imprime les champs pre-remplis qu'a la signature) :
+    # on ouvre alors la page SignNow, ou les champs sont bien affiches.
+    if doc_id and lien and _statut_contrat_signnow(doc_id) != 'signe':
+        return redirect(lien)
     if doc_id:
         try:
             contenu = signnow.telecharger(doc_id)
