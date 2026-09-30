@@ -281,6 +281,13 @@ def _garantir_colonne_licence():
         connexion.close()
     except Exception:
         pass
+    try:
+        connexion = database.get_connection()
+        connexion.execute("ALTER TABLE factures ADD COLUMN montants_compiles TEXT")
+        connexion.commit()
+        connexion.close()
+    except Exception:
+        pass
 
 
 _garantir_colonne_licence()
@@ -1779,6 +1786,105 @@ def outils_signnow_champs():
     return jsonify(signnow.champs_du_modele())
 
 
+def _facture_du_jour(nom, email):
+    """Facture deja generee AUJOURD'HUI pour ce client (meme nom OU meme
+    email), la plus recente ; None sinon."""
+    aujourdhui = datetime.now().strftime('%Y-%m-%d')
+    for f in _factures_internes_client(nom, email):
+        if str(f.get('date_facture') or '')[:10] == aujourdhui:
+            return f
+    return None
+
+
+def _fusionner_generation(existante, nom, email, adresse, formule, duree,
+                          calcul, description, cle):
+    """Nouvelle generation du basket pour un client qui a deja sa facture
+    du jour : jamais de doublon.
+
+    - Meme montant : la derniere generation remplace les donnees (email,
+      adresse, formule...) de la facture existante, meme numero.
+    - Montant different : les montants sont additionnes sur la meme facture.
+    Le contrat pre-rempli est regenere si les donnees ont change et qu'il
+    n'est pas encore signe.
+    """
+    import json as json_mod
+    fid = existante['id']
+
+    def _f(v):
+        try:
+            return round(float(v or 0), 2)
+        except (TypeError, ValueError):
+            return 0.0
+
+    ancien_ttc = _f(existante.get('montant'))
+    nouveau_ttc = _f(calcul.get('ttc'))
+    try:
+        compiles = [_f(m) for m in json_mod.loads(existante.get('montants_compiles') or '[]')]
+    except Exception:
+        compiles = []
+    if not compiles:
+        compiles = [ancien_ttc]
+
+    ancienne_formule = (existante.get('formule') or '').strip()
+    if any(abs(nouveau_ttc - m) < 0.01 for m in compiles):
+        if len(compiles) == 1:
+            # meme commande regeneree : on garde la derniere generation
+            ttc, ht, tva = nouveau_ttc, _f(calcul.get('ht')), _f(calcul.get('tva'))
+            formule_finale, duree_finale, desc_finale = formule, duree, description
+        else:
+            # montant deja compile : rien a ajouter
+            ttc, ht, tva = ancien_ttc, _f(existante.get('montant_ht')), _f(existante.get('tva'))
+            formule_finale = ancienne_formule or formule
+            duree_finale = existante.get('duree') or duree
+            desc_finale = existante.get('description') or description
+    else:
+        compiles.append(nouveau_ttc)
+        ttc = round(ancien_ttc + nouveau_ttc, 2)
+        ht = round(_f(existante.get('montant_ht')) + _f(calcul.get('ht')), 2)
+        tva = round(ttc - ht, 2)
+        if ancienne_formule and ancienne_formule.lower() != (formule or '').lower():
+            formule_finale = f"{ancienne_formule} + {formule}"
+        else:
+            formule_finale = ancienne_formule or formule
+        try:
+            duree_finale = max(int(existante.get('duree') or 0), int(duree or 0)) or duree
+        except (TypeError, ValueError):
+            duree_finale = duree
+        desc_ancienne = (existante.get('description') or '').strip()
+        desc_finale = f"{desc_ancienne} + {description}" if desc_ancienne else description
+        print(f"Factures compilees : {existante.get('numero_facture')} "
+              f"{ancien_ttc} + {nouveau_ttc} = {ttc} EUR")
+
+    change = (abs(ttc - ancien_ttc) >= 0.01
+              or (email or '').strip().lower() != (existante.get('email') or '').strip().lower()
+              or (adresse or '').strip() != (existante.get('client_adresse') or '').strip()
+              or (nom or '').strip() != (existante.get('client_nom') or '').strip()
+              or (formule_finale or '') != ancienne_formule)
+
+    champs = {'client_nom': nom or existante.get('client_nom'),
+              'email': email or existante.get('email') or '',
+              'client_adresse': adresse or existante.get('client_adresse') or '',
+              'montant': ttc, 'montant_ht': ht, 'tva': tva,
+              'formule': formule_finale, 'duree': duree_finale,
+              'description': desc_finale, 'cle_commande': cle,
+              'montants_compiles': json_mod.dumps(compiles)}
+    doc_id = str(existante.get('contrat_signnow_id') or '').strip()
+    if change and (not doc_id or _statut_contrat_signnow(doc_id) == 'en_attente'):
+        # contrat non signe : il sera recree avec les donnees a jour
+        champs['lien_signnow'] = ''
+        champs['contrat_signnow_id'] = ''
+    try:
+        connexion = database.get_connection()
+        connexion.execute(
+            "UPDATE factures SET " + ", ".join(f"{k} = ?" for k in champs) + " WHERE id = ?",
+            list(champs.values()) + [fid])
+        connexion.commit()
+        connexion.close()
+        print(f"Facture {existante.get('numero_facture')} reutilisee (pas de doublon)")
+    except Exception as exc:
+        print(f"Mise a jour facture existante : {exc}")
+
+
 @app.route('/api/contrat', methods=['POST'])
 def api_contrat():
     donnees = request.get_json(silent=True) or request.form.to_dict()
@@ -1857,9 +1963,14 @@ def api_contrat():
 
     cle = _cle_commande(email, nom, formule)
     existante = database.facture_par_cle(cle)
+    if not existante:
+        existante = _facture_du_jour(nom, email)
     if existante:
         facture_id = existante['id']
         numero = existante['numero_facture']
+        _fusionner_generation(existante, nom=nom, email=email, adresse=adresse,
+                              formule=formule, duree=duree, calcul=calcul,
+                              description=description_facture, cle=cle)
     else:
         numero = _numero_facture()
         facture_id = database.ajouter_facture(
@@ -1904,9 +2015,9 @@ def api_contrat():
         facture_id, nom, email,
         adresse=adresse,
         telephone=telephone_client,
-        formule=formule,
-        duree=duree,
-        montant_ttc=calcul.get('ttc'))
+        formule=facture_courante.get('formule') or formule,
+        duree=facture_courante.get('duree') or duree,
+        montant_ttc=facture_courante.get('montant') or calcul.get('ttc'))
 
     return jsonify({
         'ok': True,

@@ -74,6 +74,14 @@ def _designation(facture):
     """« PRIVILÈGE 36 » : la formule et sa durée, sans autre mention."""
     formule = (facture.get('formule') or '').strip()
     duree = facture.get('duree') or 0
+    # Facture compilee (plusieurs montants le meme jour) : on detaille
+    # chaque abonnement au lieu d'une seule formule.
+    try:
+        import json as _json
+        if len(_json.loads(facture.get('montants_compiles') or '[]')) > 1:
+            return (facture.get('description') or formule or 'Prestation Secureetech'), ''
+    except Exception:
+        pass
     if not formule:
         return facture.get('description') or 'Prestation Secureetech', ''
 
