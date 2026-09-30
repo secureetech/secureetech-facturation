@@ -490,6 +490,75 @@ def _profil_client(client_nom):
     return lignes, email, round(total, 2)
 
 
+def _factures_internes_client(client_nom, email=''):
+    """Factures emises par l'application (basket / page Factures) pour ce
+    client : correspondance sur l'email OU le nom, insensible a la casse.
+    Triees de la plus recente a la plus ancienne."""
+    nom_bas = (client_nom or '').strip().lower()
+    email_bas = (email or '').strip().lower()
+    if not nom_bas and not email_bas:
+        return []
+    try:
+        connexion = database.get_connection()
+        lignes = connexion.execute(
+            "SELECT * FROM factures "
+            "WHERE (? != '' AND LOWER(TRIM(COALESCE(email, ''))) = ?) "
+            "   OR (? != '' AND LOWER(TRIM(COALESCE(client_nom, ''))) = ?) "
+            "ORDER BY date_facture DESC, id DESC",
+            (email_bas, email_bas, nom_bas, nom_bas)).fetchall()
+        connexion.close()
+        return [dict(l) for l in lignes]
+    except Exception as exc:
+        print(f"Lecture factures internes : {exc}")
+        return []
+
+
+def _statut_contrat_signnow(document_id):
+    """'signe' si le document SignNow est signe, 'en_attente' sinon,
+    '' si pas de document ou SignNow injoignable."""
+    document_id = str(document_id or '').strip()
+    if not document_id:
+        return ''
+    try:
+        infos = signnow._appel(f'/document/{document_id}')
+    except Exception as exc:
+        print(f"Statut contrat SignNow {document_id[:10]} : {exc}")
+        return ''
+    invites_ok = any((i.get('status') or '').lower() in ('fulfilled', 'completed')
+                     for i in (infos.get('field_invites') or []))
+    if invites_ok or bool(infos.get('signatures')):
+        return 'signe'
+    return 'en_attente'
+
+
+@app.route('/factures/<int:facture_id>/contrat')
+@admin_required
+def voir_contrat_facture(facture_id):
+    """Contrat pre-rempli de la facture (version signee des que le client
+    a signe) ; a defaut d'identifiant SignNow, redirige vers le lien."""
+    facture = database.obtenir_facture(facture_id)
+    if not facture:
+        return "Facture introuvable.", 404
+    doc_id = str(facture.get('contrat_signnow_id') or '').strip()
+    lien = str(facture.get('lien_signnow') or '').strip()
+    if doc_id:
+        try:
+            contenu = signnow.telecharger(doc_id)
+            numero = (facture.get('numero_facture') or str(facture_id)).replace('/', '-')
+            return contenu, 200, {
+                'Content-Type': 'application/pdf',
+                'Content-Disposition': f'inline; filename=contrat_{numero}.pdf',
+            }
+        except Exception as exc:
+            print(f"Telechargement contrat facture {facture_id} : {exc}")
+            if lien:
+                return redirect(lien)
+            return f"Contrat indisponible pour le moment : {exc}", 502
+    if lien:
+        return redirect(lien)
+    return "Aucun contrat rattache a cette facture.", 404
+
+
 @app.route('/clients/generer-facture', methods=['POST'])
 @admin_required
 def clients_generer_facture():
@@ -502,6 +571,22 @@ def clients_generer_facture():
     if not client_nom:
         return redirect(url_for('clients'))
     lignes, email, total = _profil_client(client_nom)
+    # Une facture existe deja (basket) : on l'ouvre, on n'en cree jamais
+    # une deuxieme.
+    date_ref_txt = str(lignes[0].get('date_paiement') or '')[:10] if lignes else ''
+    for existante in _factures_internes_client(client_nom, email):
+        try:
+            d_fact = datetime.strptime(str(existante.get('date_facture') or '')[:10], '%Y-%m-%d')
+        except Exception:
+            continue
+        references = [datetime.now()]
+        try:
+            references.append(datetime.strptime(date_ref_txt, '%Y-%m-%d'))
+        except Exception:
+            pass
+        if any(abs((d_fact - r).days) <= 90 for r in references):
+            print(f"Facture existante reutilisee : {existante.get('numero_facture')} pour {client_nom}")
+            return redirect(url_for('detail_client', client_nom=client_nom) + '#factures-secureetech')
     if not lignes or total <= 0:
         return redirect(url_for('factures', client_nom=client_nom, email=email) + '#creer')
     formule_nom, duree = _formule_depuis_montant(total)
@@ -535,6 +620,11 @@ def clients_generer_contrat():
     if not client_nom:
         return redirect(url_for('clients'))
     lignes, email, total = _profil_client(client_nom)
+    # Un contrat pre-rempli existe deja sur une facture : pas de doublon.
+    for existante in _factures_internes_client(client_nom, email):
+        if (str(existante.get('contrat_signnow_id') or '').strip()
+                or str(existante.get('lien_signnow') or '').strip()):
+            return redirect(url_for('detail_client', client_nom=client_nom) + '#factures-secureetech')
     formule_nom, duree = _formule_depuis_montant(total) if total else (None, None)
     resultat = {}
     try:
@@ -675,11 +765,20 @@ def detail_client(client_nom):
     total = sum(p['montant'] for p in paiements)
     sources = set(p['source'] for p in paiements)
     email = next((p['email'] for p in paiements if p.get('email')), '')
+    factures_internes = _factures_internes_client(client_nom, email)
+    if not email:
+        email = next((f.get('email') for f in factures_internes if f.get('email')), '') or ''
+        if email:
+            # l'email permet aussi de rattacher les factures saisies sous un autre nom
+            factures_internes = _factures_internes_client(client_nom, email)
+    for f in factures_internes:
+        f['statut_contrat'] = _statut_contrat_signnow(f.get('contrat_signnow_id'))
     contrats = database.obtenir_contrats_client(client_nom, email)
     factures_ext = database.obtenir_factures_client(client_nom, email)
 
     return render_template('client_detail.html',
                          factures_ext=factures_ext,
+                         factures_internes=factures_internes,
                          client_nom=client_nom,
                          paiements=paiements,
                          total=total,
@@ -1428,13 +1527,7 @@ def envoyer_facture(facture_id):
         montant_f = 0.0
     licence = _licence_de_facture(facture)
 
-    # Controle avant envoi : paiement recu ET contrat signe obligatoires.
-    if not _paiement_recu(email_client, client):
-        return (f"<div style='{style_page}'><h2>Envoi bloque</h2>"
-                f"<p>Aucun paiement enregistre pour <b>{client}</b> ({email_client}).</p>"
-                "<p>L'email part uniquement quand le paiement est recu"
-                " et le contrat signe.</p>"
-                "<p><a href='/factures'>Retour aux factures</a></p></div>"), 409
+    # Envoi libre : c'est l'administrateur qui decide quand envoyer.
     # Priorite 1 : le contrat genere par le basket pour CETTE facture,
     # s'il a ete signe (c'est le contrat du nouveau modele, prerempli).
     contrat_ligne = None
@@ -1456,17 +1549,19 @@ def envoyer_facture(facture_id):
         except Exception as exc:
             print(f"Verification contrat basket : {exc}")
 
-    if contrat_ligne is None:
+    lien_facture = str(facture.get('lien_signnow') or '').strip()
+    # Ancien contrat signe du client : uniquement si la facture n'a pas
+    # son propre contrat pre-rempli (sinon on enverrait le mauvais contrat).
+    if contrat_ligne is None and not doc_basket and not lien_facture:
         contrat_ligne = _contrat_signe_du_client(email_client, client)
-    if contrat_ligne is None:
-        return (f"<div style='{style_page}'><h2>Envoi bloque</h2>"
-                f"<p>Aucun contrat signe trouve pour <b>{client}</b> ({email_client}).</p>"
-                "<p>L'email part uniquement quand le paiement est recu"
-                " et le contrat signe.</p>"
-                "<p><a href='/factures'>Retour aux factures</a></p></div>"), 409
-    pdf_contrat = pdf_contrat_direct if pdf_contrat_direct else _pdf_contrat_signe(contrat_ligne)
-    lien_contrat = os.environ.get('SIGNNOW_SIGNING_LINK',
-                                  'https://signnow.com/s/EJxThaKZ')
+    if pdf_contrat_direct:
+        pdf_contrat = pdf_contrat_direct
+    elif contrat_ligne is not None:
+        pdf_contrat = _pdf_contrat_signe(contrat_ligne)
+    else:
+        pdf_contrat = None
+    lien_contrat = lien_facture or os.environ.get('SIGNNOW_SIGNING_LINK',
+                                                  'https://signnow.com/s/EJxThaKZ')
     if pdf_contrat:
         ligne_contrat_txt = "Votre contrat signe est joint a cet email.\n\n"
         ligne_contrat_html = "Votre contrat signe est egalement joint a cet email."
@@ -1474,8 +1569,6 @@ def envoyer_facture(facture_id):
         ligne_contrat_txt = f"Votre contrat a signer :\n{lien_contrat}\n\n"
         ligne_contrat_html = (f"Votre contrat a signer : <a href='{lien_contrat}'"
                               f" style='color:#7b2ff7;'>{lien_contrat}</a>")
-    lien_contrat = os.environ.get('SIGNNOW_SIGNING_LINK',
-                                  'https://signnow.com/s/EJxThaKZ')
 
     try:
         pdf = facture_pdf.construire(facture, taux_tva=formules.TVA)
@@ -1615,7 +1708,7 @@ def envoyer_facture(facture_id):
 
     return (f"<div style='{style_page}'><h2>Facture envoyee</h2>"
             f"<p>La facture {numero} a ete envoyee a <b>{email_client}</b> :"
-            f" facture PDF{' + contrat signe joint' if pdf_contrat else ''}"
+            f" facture PDF{' + contrat signe joint' if pdf_contrat else ' + lien du contrat a signer'}"
             f"{(' + cle OptiPC ' + licence) if licence else ''}.</p>"
             "<p><a href='/factures'>Retour aux factures</a></p></div>"), 200
 
