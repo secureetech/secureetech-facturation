@@ -47,10 +47,15 @@
         <td>{% for s in (c.sources or '').split(',') if s %}<span class="tag">{{ s }}</span>{% endfor %}</td>
         <td class="discret">{{ c.dernier_paiement }}</td>
         <td style="white-space:nowrap"><a href="{{ url_for('detail_client', client_nom=c.client_nom) }}">Détails</a>
+          {% set fi = (factures_clients or {}).get((c.client_nom or '')|lower) or (factures_clients or {}).get((c.email or '')|lower) %}
+          {% if fi %}
+          <a href="{{ url_for('api_facture_pdf', facture_id=fi.id) }}" target="_blank" rel="noopener" style="margin-left:8px" title="Facture SecureeTech">📄 {{ fi.numero_facture }}</a>
+          {% else %}
           <form method="post" action="{{ url_for('clients_generer_facture') }}" style="display:inline;margin-left:8px">
             <input type="hidden" name="client_nom" value="{{ c.client_nom }}">
             <button type="submit" class="bouton" style="font-size:.78rem;padding:.28rem .6rem;cursor:pointer">Générer facture</button>
           </form>
+          {% endif %}
           <form method="post" action="{{ url_for('clients_generer_contrat') }}" style="display:inline;margin-left:4px">
             <input type="hidden" name="client_nom" value="{{ c.client_nom }}">
             <button type="submit" style="font-size:.78rem;padding:.28rem .6rem;cursor:pointer">Contrat</button>

@@ -14,7 +14,15 @@
 </div>
 
 <div style="margin:1.25rem 0;">
-  <a class="bouton" href="{{ url_for('facture_client', client_nom=client_nom) }}">Éditer la facture récapitulative</a>
+  {% if not factures_internes %}
+  <form method="post" action="{{ url_for('clients_generer_facture') }}" style="display:inline">
+    <input type="hidden" name="client_nom" value="{{ client_nom }}">
+    <button type="submit" class="bouton" style="cursor:pointer">Générer la facture</button>
+  </form>
+  {% endif %}
+  {% if nb_paiements %}
+  <a href="{{ url_for('facture_client', client_nom=client_nom) }}" style="margin-left:10px">Récapitulatif des paiements (PDF)</a>
+  {% endif %}
 </div>
 
 <h3>Contrats</h3>
