@@ -10,7 +10,7 @@
   <div class="stat"><div class="libelle">Total encaissé</div><div class="valeur">{{ "%.2f"|format(total) }} €</div></div>
   <div class="stat"><div class="libelle">Paiements</div><div class="valeur">{{ nb_paiements }}</div></div>
   <div class="stat"><div class="libelle">Contrats</div><div class="valeur">{{ contrats|length }}</div></div>
-  <div class="stat"><div class="libelle">Factures</div><div class="valeur">{{ factures_ext|length }}</div></div>
+  <div class="stat"><div class="libelle">Factures</div><div class="valeur">{{ (factures_internes or [])|length + factures_ext|length }}</div></div>
 </div>
 
 <div style="margin:1.25rem 0;">
@@ -43,7 +43,52 @@
   {% endif %}
 </div>
 
-<h3>Factures</h3>
+<h3 id="factures-secureetech">Factures SecureeTech (basket)</h3>
+<div class="carte">
+  {% if factures_internes %}
+  <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+  <table>
+    <thead><tr><th>Numéro</th><th>Date</th><th>Formule</th><th class="num">TTC</th>
+      <th>Licence OptiPC</th><th>Contrat</th><th></th></tr></thead>
+    <tbody>
+      {% for f in factures_internes %}
+      <tr>
+        <td>{{ f.numero_facture }}</td>
+        <td class="discret">{{ f.date_facture }}</td>
+        <td>{% if f.formule %}<span class="tag">{{ f.formule }}{% if f.duree %} · {{ f.duree }} mois{% endif %}</span>{% else %}<span class="discret">{{ f.description }}</span>{% endif %}</td>
+        <td class="num">{{ "%.2f"|format(f.montant or 0) }} €</td>
+        <td><span class="discret" style="font-family:monospace;font-size:11px">{{ f|licence_optipc or '-' }}</span></td>
+        <td>
+          {% if f.statut_contrat == 'signe' %}<span class="tag vert">signé</span>
+          {% elif f.statut_contrat == 'en_attente' %}<span class="tag gris">en attente</span>
+          {% elif f.contrat_signnow_id or f.lien_signnow %}<span class="tag gris">inconnu</span>
+          {% else %}<span class="discret">aucun</span>{% endif %}
+        </td>
+        <td style="white-space:nowrap">
+          <a href="{{ url_for('api_facture_pdf', facture_id=f.id) }}" target="_blank" rel="noopener">Facture PDF</a>
+          {% if f.contrat_signnow_id or f.lien_signnow %}
+          · <a href="{{ url_for('voir_contrat_facture', facture_id=f.id) }}" target="_blank" rel="noopener">Voir le contrat</a>
+          {% endif %}
+          {% if f.lien_signnow %}
+          · <a href="{{ f.lien_signnow }}" target="_blank" rel="noopener">Lien de signature</a>
+          {% endif %}
+          {% if f.email %}
+          <form method="post" action="{{ url_for('envoyer_facture', facture_id=f.id) }}" style="display:inline;margin-left:8px" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Envoi...'">
+            <button type="submit" style="cursor:pointer">📧 Envoyer</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="vide">Aucune facture SecureeTech pour ce client.</div>
+  {% endif %}
+</div>
+
+<h3>Factures Stripe</h3>
 <div class="carte">
   {% if factures_ext %}
   <table>
@@ -64,7 +109,7 @@
     </tbody>
   </table>
   {% else %}
-  <div class="vide">Aucune facture rattachée à ce client.</div>
+  <div class="vide">Aucune facture Stripe rattachée à ce client.</div>
   {% endif %}
 </div>
 
