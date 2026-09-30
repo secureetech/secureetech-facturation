@@ -571,6 +571,27 @@ def voir_contrat_facture(facture_id):
     return "Aucun contrat rattache a cette facture.", 404
 
 
+def _index_factures_internes():
+    """{nom ou email en minuscules: facture SecureeTech la plus recente}."""
+    index = {}
+    try:
+        connexion = database.get_connection()
+        lignes = connexion.execute(
+            "SELECT id, numero_facture, client_nom, email, date_facture FROM factures "
+            "ORDER BY date_facture ASC, id ASC").fetchall()
+        connexion.close()
+    except Exception as exc:
+        print(f"Index factures : {exc}")
+        return index
+    for l in lignes:
+        f = dict(l)
+        for cle in ((f.get('client_nom') or '').strip().lower(),
+                    (f.get('email') or '').strip().lower()):
+            if cle:
+                index[cle] = f
+    return index
+
+
 @app.route('/clients/generer-facture', methods=['POST'])
 @admin_required
 def clients_generer_facture():
@@ -606,7 +627,8 @@ def clients_generer_facture():
         return redirect(url_for('factures', client_nom=client_nom, email=email) + '#creer')
     calcul = formules.montants(formule_nom, duree)
     numero = _numero_facture()
-    date_ref = str(lignes[0].get('date_paiement') or '')[:10] or datetime.now().strftime('%Y-%m-%d')
+    # Date d'emission = aujourd'hui : les numeros restent dans l'ordre chronologique.
+    date_ref = datetime.now().strftime('%Y-%m-%d')
     database.ajouter_facture(
         numero_facture=numero,
         date_facture=date_ref,
@@ -620,7 +642,7 @@ def clients_generer_facture():
         tva=calcul['tva'],
         client_adresse='')
     print(f"Facture 1 clic : {numero} pour {client_nom} ({formule_nom} {duree})")
-    return redirect(url_for('factures', creee=numero))
+    return redirect(url_for('detail_client', client_nom=client_nom) + '#factures-secureetech')
 
 
 @app.route('/clients/generer-contrat', methods=['POST'])
@@ -756,6 +778,7 @@ def clients():
     toutes_sources = sorted({p['source'] for p in database.obtenir_tous_paiements()})
 
     return render_template('clients.html',
+                         factures_clients=_index_factures_internes(),
                          clients=clients_list,
                          sort_by=sort_by,
                          order=order,
