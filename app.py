@@ -1820,6 +1820,17 @@ def _lien_contrat_prerempli(facture_id, nom, email, adresse='', telephone='',
     return lien
 
 
+@app.route('/outils/statuts-paiements')
+@admin_required
+def outils_statuts_paiements():
+    """Diagnostic : litiges / SEPA en attente lus chez Stripe et Mollie."""
+    lignes = statuts_paiements.tous(forcer=True)
+    return jsonify({'reponses': statuts_paiements._diag,
+                    'litiges': sum(1 for l in lignes if l['type'] == 'litige'),
+                    'sepa_en_attente': sum(1 for l in lignes if l['type'] == 'sepa_attente'),
+                    'lignes': lignes[:50]})
+
+
 @app.route('/outils/signnow-champs')
 @admin_required
 def outils_signnow_champs():
