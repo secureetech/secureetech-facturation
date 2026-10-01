@@ -1,0 +1,29 @@
+{# Paiements NON valides (litiges, SEPA en attente) : affichage seul, hors totaux. #}
+{% if statuts %}
+<div class="carte" style="margin:1rem 0;border-left:4px solid #cc1818;">
+  <div class="carte-corps" style="padding-top:.9rem;padding-bottom:.9rem;">
+    <div style="font-weight:650;margin-bottom:.2rem;">Paiements non validés</div>
+    <div class="discret" style="margin-bottom:.6rem;">Litiges et prélèvements SEPA en attente — non comptés dans les totaux ni dans les ventes.</div>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+    <table>
+      <thead><tr><th>Statut</th>{% if avec_client %}<th>Client</th>{% endif %}<th>Date</th><th>Compte</th><th class="num">Montant</th><th>Détail</th></tr></thead>
+      <tbody>
+        {% for s in statuts %}
+        <tr>
+          <td style="white-space:nowrap">
+            {% if s.type == 'litige' %}<span class="tag" style="background:rgba(204,24,24,.12);color:#cc1818;">Litige</span>
+            {% else %}<span class="tag" style="background:rgba(240,120,0,.14);color:#c05a00;">SEPA en attente</span>{% endif %}
+          </td>
+          {% if avec_client %}<td>{{ s.client_nom or '—' }}{% if s.email %}<br><span class="discret">{{ s.email }}</span>{% endif %}</td>{% endif %}
+          <td class="discret">{{ s.date }}</td>
+          <td><span class="tag gris">{{ s.plateforme }}</span></td>
+          <td class="num discret">{{ "%.2f"|format(s.montant or 0) }} €</td>
+          <td class="discret">{{ s.statut }}{% if s.motif %} · {{ s.motif }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endif %}
