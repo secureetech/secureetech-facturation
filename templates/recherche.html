@@ -28,8 +28,13 @@
 {% elif not terme %}
   <div class="vide">Aucune recherche en cours.<br><span class="discret">Les clients s'affichent uniquement après une recherche.</span></div>
 {% elif not resultats %}
+  {% if statuts_autres %}
+    {% with statuts=statuts_autres, avec_client=True %}{% include '_statuts_paiements.html' %}{% endwith %}
+  {% else %}
   <div class="vide">Aucun client ne correspond à « {{ terme }} ».</div>
+  {% endif %}
 {% else %}
+  {% with statuts=statuts_autres, avec_client=True %}{% include '_statuts_paiements.html' %}{% endwith %}
   <p class="sous-titre">{{ resultats|length }} résultat{{ 's' if resultats|length > 1 else '' }}{% if resultats|length == 50 %} (50 premiers, affinez la recherche){% endif %}</p>
 
   {% for c in resultats %}
@@ -45,6 +50,8 @@
         <span class="discret">{{ c.nb_transactions }} paiement{{ 's' if c.nb_transactions > 1 else '' }} &middot; dernier le {{ c.dernier_paiement }}</span>
       </div>
     </div>
+
+    {% with statuts=statuts_clients.get(c.client_nom, []), avec_client=False %}{% include '_statuts_paiements.html' %}{% endwith %}
 
     {% set cts = contrats.get(c.client_nom, []) %}
     {% if cts %}
