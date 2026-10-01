@@ -25,6 +25,8 @@
   {% endif %}
 </div>
 
+{% with statuts=statuts, avec_client=False %}{% include '_statuts_paiements.html' %}{% endwith %}
+
 <h3>Contrats</h3>
 <div class="carte">
   {% if contrats %}
