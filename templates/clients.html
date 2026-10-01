@@ -28,6 +28,8 @@
   <input type="hidden" name="sort" value="{{ sort_by }}"><input type="hidden" name="order" value="{{ order }}">
 </form>
 
+{% with statuts=statuts, avec_client=True %}{% include '_statuts_paiements.html' %}{% endwith %}
+
 <div class="carte">
   <table>
     <thead><tr>
