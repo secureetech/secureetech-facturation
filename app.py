@@ -5,6 +5,7 @@ import os
 import config
 import database
 import signnow
+import statuts_paiements
 import formules
 import facture_pdf
 from reportlab.lib.pagesizes import letter, A4
@@ -701,7 +702,22 @@ def recherche():
         contrats[nom] = database.obtenir_contrats_client(nom, client.get('email') or '')
         factures_ext[nom] = database.obtenir_factures_client(nom, client.get('email') or '')
 
+    # Litiges / SEPA en attente : statut affiche, jamais compte dans les totaux.
+    statuts_clients = {}
+    statuts_autres = []
+    if len(terme) >= RECHERCHE_MIN and not quota_atteint:
+        deja = set()
+        for client in resultats:
+            lignes = statuts_paiements.pour_client(client['client_nom'], client.get('email') or '')
+            if lignes:
+                statuts_clients[client['client_nom']] = lignes
+                deja.update(l.get('reference') for l in lignes)
+        statuts_autres = [l for l in statuts_paiements.pour_terme(terme)
+                          if l.get('reference') not in deja]
+
     return render_template('recherche.html',
+                           statuts_clients=statuts_clients,
+                           statuts_autres=statuts_autres,
                            factures_ext=factures_ext,
                            terme=terme,
                            resultats=resultats,
@@ -778,6 +794,7 @@ def clients():
     toutes_sources = sorted({p['source'] for p in database.obtenir_tous_paiements()})
 
     return render_template('clients.html',
+                         statuts=statuts_paiements.pour_terme(recherche) if recherche else [],
                          factures_clients=_index_factures_internes(),
                          clients=clients_list,
                          sort_by=sort_by,
@@ -812,6 +829,7 @@ def detail_client(client_nom):
     factures_ext = database.obtenir_factures_client(client_nom, email)
 
     return render_template('client_detail.html',
+                         statuts=statuts_paiements.pour_client(client_nom, email),
                          factures_ext=factures_ext,
                          factures_internes=factures_internes,
                          client_nom=client_nom,
