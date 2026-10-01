@@ -20,6 +20,7 @@ COMPTE_H2O = 'acct_1NLr5uKlj7JBTYX0'
 DUREE_CACHE = 600  # secondes
 
 _cache = {'quand': 0, 'lignes': []}
+_diag = {}
 
 LIBELLES_LITIGE = {
     'warning_needs_response': 'Alerte - reponse requise',
@@ -73,6 +74,7 @@ def _stripe(cle, rang):
             params['starting_after'] = apres
         try:
             rep = requests.get(f'{STRIPE}/disputes', auth=auth, params=params, timeout=20)
+            _diag[f'{compte} litiges'] = rep.status_code if rep.status_code == 200 else f"{rep.status_code} {rep.text[:160]}"
             if rep.status_code != 200:
                 break
             corps = rep.json()
@@ -101,6 +103,7 @@ def _stripe(cle, rang):
     try:
         rep = requests.get(f'{STRIPE}/charges/search', auth=auth,
                            params={'query': "status:'pending'", 'limit': 100}, timeout=20)
+        _diag[f'{compte} SEPA'] = rep.status_code if rep.status_code == 200 else f"{rep.status_code} {rep.text[:160]}"
         if rep.status_code == 200:
             for c in rep.json().get('data') or []:
                 type_pm = ((c.get('payment_method_details') or {}).get('type') or '')
@@ -129,6 +132,7 @@ def _mollie(cle):
     try:
         rep = requests.get(f'{MOLLIE}/chargebacks', headers=entetes,
                            params={'limit': 250}, timeout=20)
+        _diag['Mollie litiges'] = rep.status_code if rep.status_code == 200 else f"{rep.status_code} {rep.text[:160]}"
         if rep.status_code != 200:
             return lignes
         retours = (rep.json().get('_embedded') or {}).get('chargebacks') or []
